@@ -6,6 +6,10 @@
 # Node artifact files
 node_modules/
 dist/
+.dev-pids
+web-dev.log
+web-dev.err.log
+*.tsbuildinfo
 
 # Compiled Java class files
 *.class
