@@ -7,6 +7,7 @@ import {
   FileCheck2,
   FileStack,
   FolderKanban,
+  LibraryBig,
   Languages,
   LogOut,
   Menu,
@@ -17,28 +18,71 @@ import {
 } from "lucide-react";
 import {
   CurrentUser,
+  getCurrentUserAvatar,
   getCurrentUser,
   getHealth,
   HealthStatus,
   login
 } from "../services/api/auth";
-import { ApiError } from "../services/api/client";
+import { ApiError, setApiCulture } from "../services/api/client";
+import { getRequests, RequestSummary } from "../services/api/requests";
+import {
+  getRequestMetrics,
+  RequestsView
+} from "../features/requests/RequestsView";
+import { CreateRequestView } from "../features/requests/CreateRequestView";
+import { PublicRequestPage } from "../features/publicRequests/PublicRequestPage";
+import { RequestDetailsView } from "../features/requests/RequestDetailsView";
+import { ClientsView } from "../features/clients/ClientsView";
+import { ProfileView } from "../features/profile/ProfileView";
+import { UsersView } from "../features/users/UsersView";
+import { SettingsView } from "../features/settings/SettingsView";
+import { CatalogsView } from "../features/catalogs/CatalogsView";
 
 const TOKEN_STORAGE_KEY = "trustnetdocs.accessToken";
 
 interface NavigationItem {
+  id: ViewId;
   label: string;
   icon: typeof FileStack;
   roles?: string[];
 }
 
+type ViewId =
+  | "dashboard"
+  | "my-requests"
+  | "requests"
+  | "new-request"
+  | "request-detail"
+  | "profile"
+  | "clients"
+  | "catalogs"
+  | "users"
+  | "settings";
+
 const navigation: NavigationItem[] = [
-  { label: "Visao geral", icon: FolderKanban },
-  { label: "Minhas solicitacoes", icon: FileCheck2 },
-  { label: "Solicitacoes", icon: FileStack, roles: ["SuperAdmin", "Administrator"] },
-  { label: "Clientes", icon: Building2, roles: ["SuperAdmin", "Administrator"] },
-  { label: "Usuarios", icon: Users, roles: ["SuperAdmin"] },
-  { label: "Configuracoes", icon: Settings, roles: ["SuperAdmin"] }
+  { id: "dashboard", label: "Visao geral", icon: FolderKanban },
+  { id: "my-requests", label: "Minhas solicitacoes", icon: FileCheck2 },
+  {
+    id: "requests",
+    label: "Solicitacoes",
+    icon: FileStack,
+    roles: ["SuperAdmin", "Administrator"]
+  },
+  {
+    id: "clients",
+    label: "Clientes",
+    icon: Building2,
+    roles: ["SuperAdmin", "Administrator"]
+  },
+  {
+    id: "catalogs",
+    label: "Catalogos",
+    icon: LibraryBig,
+    roles: ["SuperAdmin", "Administrator"]
+  },
+  { id: "users", label: "Usuarios", icon: Users, roles: ["SuperAdmin"] },
+  { id: "settings", label: "Configuracoes", icon: Settings, roles: ["SuperAdmin"] }
 ];
 
 function hasAnyRole(user: CurrentUser, roles?: string[]) {
@@ -46,32 +90,43 @@ function hasAnyRole(user: CurrentUser, roles?: string[]) {
 }
 
 export function App() {
+  const publicToken = getPublicRequestToken();
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY));
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [sessionLoading, setSessionLoading] = useState(Boolean(token));
 
   useEffect(() => {
+    if (publicToken) return;
     getHealth().then(setHealth).catch(() => setHealth(null));
-  }, []);
+  }, [publicToken]);
 
   useEffect(() => {
+    if (publicToken) {
+      setSessionLoading(false);
+      return;
+    }
+
     if (!token) {
       setSessionLoading(false);
       return;
     }
 
     getCurrentUser(token)
-      .then(setUser)
+      .then((currentUser) => {
+        setApiCulture(currentUser.preferredCulture);
+        setUser(currentUser);
+      })
       .catch(() => {
         localStorage.removeItem(TOKEN_STORAGE_KEY);
         setToken(null);
       })
       .finally(() => setSessionLoading(false));
-  }, [token]);
+  }, [publicToken, token]);
 
   function handleAuthenticated(accessToken: string, currentUser: CurrentUser) {
     localStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
+    setApiCulture(currentUser.preferredCulture);
     setToken(accessToken);
     setUser(currentUser);
   }
@@ -82,6 +137,10 @@ export function App() {
     setUser(null);
   }
 
+  if (publicToken) {
+    return <PublicRequestPage token={publicToken} />;
+  }
+
   if (sessionLoading) {
     return <AppLoading />;
   }
@@ -90,7 +149,15 @@ export function App() {
     return <LoginScreen health={health} onAuthenticated={handleAuthenticated} />;
   }
 
-  return <Workspace user={user} health={health} onLogout={handleLogout} />;
+  return (
+    <Workspace
+      token={token}
+      user={user}
+      health={health}
+      onLogout={handleLogout}
+      onUserUpdated={setUser}
+    />
+  );
 }
 
 function AppLoading() {
@@ -218,19 +285,50 @@ function LoginScreen({
 }
 
 function Workspace({
+  token,
   user,
   health,
-  onLogout
+  onLogout,
+  onUserUpdated
 }: {
+  token: string;
   user: CurrentUser;
   health: HealthStatus | null;
   onLogout: () => void;
+  onUserUpdated: (user: CurrentUser) => void;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const [selectedRequest, setSelectedRequest] = useState<{
+    id: number;
+    mineOnly: boolean;
+  } | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarVersion, setAvatarVersion] = useState(0);
   const visibleNavigation = useMemo(
     () => navigation.filter((item) => hasAnyRole(user, item.roles)),
     [user]
   );
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    getCurrentUserAvatar(token)
+      .then((avatar) => {
+        if (!avatar) {
+          setAvatarUrl(null);
+          return;
+        }
+
+        objectUrl = URL.createObjectURL(avatar);
+        setAvatarUrl(objectUrl);
+      })
+      .catch(() => setAvatarUrl(null));
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [avatarVersion, token]);
 
   return (
     <div className="workspace">
@@ -258,10 +356,17 @@ function Workspace({
         </div>
 
         <nav>
-          {visibleNavigation.map((item, index) => {
+          {visibleNavigation.map((item) => {
             const Icon = item.icon;
             return (
-              <button className={index === 0 ? "active" : ""} key={item.label}>
+              <button
+                className={activeView === item.id ? "active" : ""}
+                key={item.id}
+                onClick={() => {
+                  setActiveView(item.id);
+                  setSidebarOpen(false);
+                }}
+              >
                 <Icon size={18} />
                 <span>{item.label}</span>
               </button>
@@ -291,13 +396,20 @@ function Workspace({
             <Menu size={21} />
           </button>
           <div className="topbar-spacer" />
-          <button className="language-button">
+          <button
+            className="language-button"
+            onClick={() => setActiveView("profile")}
+          >
             <Languages size={17} />
             {user.preferredCulture}
           </button>
-          <button className="user-menu">
+          <button className="user-menu" onClick={() => setActiveView("profile")}>
             <span className="avatar">
-              <CircleUserRound size={21} />
+              {avatarUrl ? (
+                <img alt="" src={avatarUrl} />
+              ) : (
+                <CircleUserRound size={21} />
+              )}
             </span>
             <span className="user-meta">
               <strong>{user.displayName}</strong>
@@ -307,46 +419,232 @@ function Workspace({
         </header>
 
         <main className="dashboard">
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">Visao geral</span>
-              <h1>Ola, {user.displayName.split(" ")[0]}</h1>
-              <p>Acompanhe o trabalho recente da sua empresa.</p>
-            </div>
-            <button className="primary-button compact-button">
-              Nova solicitacao
-              <ChevronRight size={17} />
-            </button>
-          </div>
-
-          <section className="metric-grid">
-            <Metric label="Aguardando envio" value="0" detail="Solicitacoes abertas" />
-            <Metric label="Em analise" value="0" detail="Documentos recebidos" />
-            <Metric label="Aprovadas" value="0" detail="Concluidas no periodo" />
-            <Metric label="Reenvio solicitado" value="0" detail="Precisam de atencao" />
-          </section>
-
-          <section className="dashboard-section">
-            <div className="section-heading">
-              <div>
-                <h2>Solicitacoes recentes</h2>
-                <p>Os dados reais serao carregados no proximo modulo.</p>
-              </div>
-              <button className="text-button">Ver todas</button>
-            </div>
-
-            <div className="empty-state">
-              <span className="empty-icon">
-                <FileStack size={24} />
-              </span>
-              <h3>Nenhuma solicitacao encontrada</h3>
-              <p>Crie a primeira solicitacao para iniciar o fluxo de documentos.</p>
-              <button className="secondary-button">Criar solicitacao</button>
-            </div>
-          </section>
+          {activeView === "dashboard" && (
+            <Dashboard
+              token={token}
+              user={user}
+              onCreateRequest={() => setActiveView("new-request")}
+              onOpenRequests={() =>
+                setActiveView(
+                  hasAnyRole(user, ["SuperAdmin", "Administrator"])
+                    ? "requests"
+                    : "my-requests"
+                )
+              }
+              onOpenRequest={(requestId, mineOnly) => {
+                setSelectedRequest({ id: requestId, mineOnly });
+                setActiveView("request-detail");
+              }}
+            />
+          )}
+          {activeView === "my-requests" && (
+            <RequestsPage
+              token={token}
+              mineOnly
+              onOpen={(requestId) => {
+                setSelectedRequest({ id: requestId, mineOnly: true });
+                setActiveView("request-detail");
+              }}
+              title="Minhas solicitacoes"
+            />
+          )}
+          {activeView === "requests" && (
+            <RequestsPage
+              token={token}
+              mineOnly={false}
+              onCreate={() => setActiveView("new-request")}
+              onOpen={(requestId) => {
+                setSelectedRequest({ id: requestId, mineOnly: false });
+                setActiveView("request-detail");
+              }}
+              title="Solicitacoes"
+            />
+          )}
+          {activeView === "new-request" && (
+            <CreateRequestView
+              token={token}
+              onCancel={() => setActiveView("requests")}
+              onFinished={() => setActiveView("requests")}
+            />
+          )}
+          {activeView === "request-detail" && selectedRequest && (
+            <RequestDetailsView
+              token={token}
+              requestId={selectedRequest.id}
+              mineOnly={selectedRequest.mineOnly}
+              onBack={() =>
+                setActiveView(selectedRequest.mineOnly ? "my-requests" : "requests")
+              }
+            />
+          )}
+          {activeView === "clients" && <ClientsView token={token} />}
+          {activeView === "catalogs" && <CatalogsView token={token} />}
+          {activeView === "profile" && (
+            <ProfileView
+              token={token}
+              user={user}
+              onAvatarChanged={() => setAvatarVersion((value) => value + 1)}
+              onUserUpdated={onUserUpdated}
+            />
+          )}
+          {activeView === "users" && (
+            <UsersView currentUser={user} token={token} />
+          )}
+          {activeView === "settings" && (
+            <SettingsView token={token} />
+          )}
         </main>
       </div>
     </div>
+  );
+}
+
+function Dashboard({
+  token,
+  user,
+  onCreateRequest,
+  onOpenRequest,
+  onOpenRequests
+}: {
+  token: string;
+  user: CurrentUser;
+  onCreateRequest: () => void;
+  onOpenRequest: (requestId: number, mineOnly: boolean) => void;
+  onOpenRequests: () => void;
+}) {
+  const [requests, setRequests] = useState<RequestSummary[]>([]);
+  const canManageRequests = hasAnyRole(user, ["SuperAdmin", "Administrator"]);
+
+  useEffect(() => {
+    getRequests(token, !canManageRequests).then(setRequests).catch(() => setRequests([]));
+  }, [canManageRequests, token]);
+
+  const metrics = getRequestMetrics(requests);
+
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">Visao geral</span>
+          <h1>Ola, {user.displayName.split(" ")[0]}</h1>
+          <p>Acompanhe o trabalho recente da sua empresa.</p>
+        </div>
+        {canManageRequests && (
+          <button
+            className="primary-button compact-button"
+            onClick={onCreateRequest}
+          >
+            Nova solicitacao
+            <ChevronRight size={17} />
+          </button>
+        )}
+      </div>
+
+      <section className="metric-grid">
+        <Metric
+          label="Aguardando envio"
+          value={String(metrics.waiting)}
+          detail="Solicitacoes abertas"
+        />
+        <Metric
+          label="Em analise"
+          value={String(metrics.reviewing)}
+          detail="Documentos recebidos"
+        />
+        <Metric
+          label="Aprovadas"
+          value={String(metrics.approved)}
+          detail="Concluidas"
+        />
+        <Metric
+          label="Reenvio solicitado"
+          value={String(metrics.resubmission)}
+          detail="Precisam de atencao"
+        />
+      </section>
+
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Solicitacoes recentes</h2>
+            <p>Ultimas movimentacoes disponiveis para o seu perfil.</p>
+          </div>
+          <button className="text-button" onClick={onOpenRequests}>
+            Ver todas
+          </button>
+        </div>
+        <RequestsView
+          compact
+          mineOnly={!canManageRequests}
+          onCreate={canManageRequests ? onCreateRequest : undefined}
+          onOpen={(requestId) => onOpenRequest(requestId, !canManageRequests)}
+          token={token}
+        />
+      </section>
+    </>
+  );
+}
+
+function RequestsPage({
+  token,
+  mineOnly,
+  onCreate,
+  onOpen,
+  title
+}: {
+  token: string;
+  mineOnly: boolean;
+  onCreate?: () => void;
+  onOpen?: (requestId: number) => void;
+  title: string;
+}) {
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">Documentos</span>
+          <h1>{title}</h1>
+          <p>
+            {mineOnly
+              ? "Acompanhe as solicitacoes criadas por voce."
+              : "Acompanhe os envios e o andamento dos documentos da empresa."}
+          </p>
+        </div>
+        {!mineOnly && (
+          <button
+            className="primary-button compact-button"
+            onClick={onCreate}
+          >
+            Nova solicitacao
+            <ChevronRight size={17} />
+          </button>
+        )}
+      </div>
+      <section className="dashboard-section requests-section">
+        <RequestsView
+          mineOnly={mineOnly}
+          onCreate={onCreate}
+          onOpen={onOpen}
+          token={token}
+        />
+      </section>
+    </>
+  );
+}
+
+function ComingSoon({ view }: { view: ViewId }) {
+  const labels: Partial<Record<ViewId, string>> = {
+    clients: "Clientes",
+    users: "Usuarios",
+    settings: "Configuracoes"
+  };
+
+  return (
+    <section className="placeholder-page">
+      <span className="eyebrow">Proximo modulo</span>
+      <h1>{labels[view]}</h1>
+      <p>Esta area sera conectada a API nas proximas etapas.</p>
+    </section>
   );
 }
 
@@ -383,4 +681,9 @@ function getRoleLabel(roles: string[]) {
   if (roles.includes("SuperAdmin")) return "Administrador do sistema";
   if (roles.includes("Administrator")) return "Administrador da empresa";
   return "Usuario";
+}
+
+function getPublicRequestToken() {
+  const match = window.location.pathname.match(/^\/public\/requests\/([^/]+)\/?$/);
+  return match ? decodeURIComponent(match[1]) : null;
 }

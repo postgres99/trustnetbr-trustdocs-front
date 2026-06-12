@@ -15,6 +15,7 @@
 - Use functional components and hooks.
 - Keep source code, types, component names, and technical identifiers in English.
 - User-facing text must support `pt-BR` and `en-US`.
+- After authentication, API requests must send the user's `preferredCulture` in `Accept-Language`; do not rely on the browser language for authenticated enum descriptions.
 
 ## Architecture
 
@@ -45,6 +46,8 @@
 - Local Web URL: `http://localhost:5173`.
 - Local API HTTP URL: `http://localhost:5231`.
 - Vite proxies `/api` to the local API.
+- Public document submission uses `/public/requests/{token}` and must remain accessible without an authenticated session.
+- The raw public token is returned only once after request creation; the Web must immediately present a copyable public URL.
 - Environment-specific API addresses must use `VITE_API_BASE_URL`.
 - Do not version production secrets.
 

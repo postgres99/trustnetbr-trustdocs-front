@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiBlob, apiRequest } from "./client";
 
 export interface AuthenticatedUser {
   id: string;
@@ -45,4 +45,61 @@ export function getCurrentUser(token: string) {
 
 export function getHealth() {
   return apiRequest<HealthStatus>("/health");
+}
+
+export function updateCurrentUserPreferences(
+  token: string,
+  timeZoneId: string,
+  preferredCulture: string
+) {
+  return apiRequest<CurrentUser>(
+    "/auth/me/preferences",
+    {
+      method: "PUT",
+      body: JSON.stringify({ timeZoneId, preferredCulture })
+    },
+    token
+  );
+}
+
+export function changeCurrentUserPassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string,
+  confirmNewPassword: string
+) {
+  return apiRequest<Record<string, never>>(
+    "/auth/change-password",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        currentPassword,
+        newPassword,
+        confirmNewPassword
+      })
+    },
+    token
+  );
+}
+
+export function getCurrentUserAvatar(token: string) {
+  return apiBlob("/auth/me/avatar", token);
+}
+
+export function uploadCurrentUserAvatar(token: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<Record<string, never>>(
+    "/auth/me/avatar",
+    { method: "POST", body: form },
+    token
+  );
+}
+
+export function removeCurrentUserAvatar(token: string) {
+  return apiRequest<Record<string, never>>(
+    "/auth/me/avatar",
+    { method: "DELETE" },
+    token
+  );
 }
