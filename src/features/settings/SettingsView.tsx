@@ -23,19 +23,22 @@ import {
   TenantInput,
   updateTenant
 } from "../../services/api/tenants";
+import { useI18n } from "../../i18n/I18nContext";
 
 type SettingsTab = "companies" | "email";
 
 export function SettingsView({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? settingsCopy.en : settingsCopy.pt;
   const [tab, setTab] = useState<SettingsTab>("companies");
 
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Administracao global</span>
-          <h1>Configuracoes</h1>
-          <p>Gerencie empresas e servicos operacionais do sistema.</p>
+          <span className="eyebrow">{c.globalAdmin}</span>
+          <h1>{c.title}</h1>
+          <p>{c.subtitle}</p>
         </div>
       </div>
 
@@ -45,14 +48,14 @@ export function SettingsView({ token }: { token: string }) {
           onClick={() => setTab("companies")}
         >
           <Building2 size={17} />
-          Empresas
+          {c.companies}
         </button>
         <button
           className={tab === "email" ? "active" : ""}
           onClick={() => setTab("email")}
         >
           <Mail size={17} />
-          E-mail
+          {c.email}
         </button>
       </div>
 
@@ -66,6 +69,8 @@ export function SettingsView({ token }: { token: string }) {
 }
 
 function CompaniesSettings({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? settingsCopy.en : settingsCopy.pt;
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -103,7 +108,7 @@ function CompaniesSettings({ token }: { token: string }) {
   async function toggleTenant(tenant: Tenant) {
     if (
       !window.confirm(
-        `${tenant.isActive ? "Desativar" : "Ativar"} a empresa "${tenant.name}"?`
+        `${tenant.isActive ? c.deactivate : c.activate} ${c.companyArticle} "${tenant.name}"?`
       )
     ) {
       return;
@@ -138,11 +143,11 @@ function CompaniesSettings({ token }: { token: string }) {
             <Search size={17} />
             <input
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome, CNPJ ou slug"
+              placeholder={c.searchCompany}
               value={search}
             />
           </div>
-          <button className="secondary-button search-button">Buscar</button>
+          <button className="secondary-button search-button">{c.search}</button>
           <button
             className="primary-button compact-button"
             onClick={() => {
@@ -152,12 +157,12 @@ function CompaniesSettings({ token }: { token: string }) {
             type="button"
           >
             <Plus size={17} />
-            Nova empresa
+            {c.newCompany}
           </button>
         </form>
 
         {loading ? (
-          <div className="request-feedback">Carregando empresas...</div>
+          <div className="request-feedback">{c.loadingCompanies}</div>
         ) : (
           <div className="company-list">
             {tenants.map((tenant) => (
@@ -168,13 +173,13 @@ function CompaniesSettings({ token }: { token: string }) {
                 <div>
                   <strong>{tenant.name}</strong>
                   <span>
-                    {tenant.cnpj || "CNPJ nao informado"} · {tenant.slug}
+                    {tenant.cnpj || c.taxIdMissing} · {tenant.slug}
                   </span>
                 </div>
                 <span
                   className={`status-badge ${tenant.isActive ? "success" : "danger"}`}
                 >
-                  {tenant.isActive ? "Ativa" : "Inativa"}
+                  {tenant.isActive ? c.activeFemale : c.inactiveFemale}
                 </span>
                 <div className="table-actions">
                   <button
@@ -183,7 +188,7 @@ function CompaniesSettings({ token }: { token: string }) {
                       setEditing(tenant);
                       setFormOpen(true);
                     }}
-                    title="Editar"
+                    title={c.edit}
                   >
                     <Pencil size={17} />
                   </button>
@@ -191,7 +196,7 @@ function CompaniesSettings({ token }: { token: string }) {
                     className={`secondary-button tenant-toggle ${tenant.isActive ? "danger-text" : ""}`}
                     onClick={() => void toggleTenant(tenant)}
                   >
-                    {tenant.isActive ? "Desativar" : "Ativar"}
+                    {tenant.isActive ? c.deactivate : c.activate}
                   </button>
                 </div>
               </article>
@@ -226,6 +231,8 @@ function TenantForm({
   onClose: () => void;
   onSaved: (tenant: Tenant) => void;
 }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? settingsCopy.en : settingsCopy.pt;
   const [name, setName] = useState(tenant?.name ?? "");
   const [cnpj, setCnpj] = useState(tenant?.cnpj ?? "");
   const [slug, setSlug] = useState(tenant?.slug ?? "");
@@ -236,7 +243,7 @@ function TenantForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim() || !slug.trim()) {
-      setError("Informe o nome e o slug da empresa.");
+      setError(c.companyRequired);
       return;
     }
 
@@ -269,8 +276,8 @@ function TenantForm({
       >
         <header className="dialog-header">
           <div>
-            <span className="eyebrow">Empresa</span>
-            <h2>{tenant ? "Editar empresa" : "Nova empresa"}</h2>
+            <span className="eyebrow">{c.company}</span>
+            <h2>{tenant ? c.editCompany : c.newCompany}</h2>
           </div>
           <button className="icon-button" onClick={onClose}>
             <X size={20} />
@@ -278,7 +285,7 @@ function TenantForm({
         </header>
         <form className="dialog-form" onSubmit={submit}>
           <div>
-            <label>Nome</label>
+            <label>{c.name}</label>
             <input
               autoFocus
               maxLength={200}
@@ -316,15 +323,15 @@ function TenantForm({
               onChange={(event) => setIsActive(event.target.checked)}
               type="checkbox"
             />
-            Empresa ativa
+            {c.activeCompany}
           </label>
           {error && <div className="form-error">{error}</div>}
           <footer className="dialog-actions">
             <button className="secondary-button" onClick={onClose} type="button">
-              Cancelar
+              {c.cancel}
             </button>
             <button className="primary-button compact-button" disabled={saving}>
-              {saving ? "Salvando..." : "Salvar empresa"}
+              {saving ? c.saving : c.saveCompany}
             </button>
           </footer>
         </form>
@@ -334,6 +341,8 @@ function TenantForm({
 }
 
 function EmailSettings({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? settingsCopy.en : settingsCopy.pt;
   const [configuration, setConfiguration] =
     useState<SystemConfiguration | null>(null);
   const [password, setPassword] = useState("");
@@ -370,7 +379,7 @@ function EmailSettings({ token }: { token: string }) {
         })
       );
       setPassword("");
-      setMessage("Configuracoes de e-mail atualizadas.");
+      setMessage(c.emailUpdated);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -381,7 +390,7 @@ function EmailSettings({ token }: { token: string }) {
   if (!configuration) {
     return (
       <div className="request-feedback">
-        {error || "Carregando configuracoes de e-mail..."}
+        {error || c.loadingEmail}
       </div>
     );
   }
@@ -403,8 +412,8 @@ function EmailSettings({ token }: { token: string }) {
             <Server size={19} />
           </span>
           <div>
-            <h2>Servidor SMTP</h2>
-            <p>Credenciais utilizadas para os envios do sistema.</p>
+            <h2>{c.smtpServer}</h2>
+            <p>{c.smtpDescription}</p>
           </div>
         </div>
 
@@ -417,7 +426,7 @@ function EmailSettings({ token }: { token: string }) {
             />
           </div>
           <div>
-            <label>Porta</label>
+            <label>{c.port}</label>
             <input
               min={1}
               onChange={(event) => update("port", Number(event.target.value))}
@@ -426,7 +435,7 @@ function EmailSettings({ token }: { token: string }) {
             />
           </div>
           <div>
-            <label>Metodo de entrega</label>
+            <label>{c.deliveryMethod}</label>
             <input
               min={0}
               onChange={(event) =>
@@ -444,13 +453,13 @@ function EmailSettings({ token }: { token: string }) {
             />
           </div>
           <div className="full-field">
-            <label>Nova senha SMTP</label>
+            <label>{c.newSmtpPassword}</label>
             <input
               onChange={(event) => setPassword(event.target.value)}
               placeholder={
                 configuration.hasPasswordEmail
-                  ? "Deixe vazio para manter a senha atual"
-                  : "Informe a senha SMTP"
+                  ? c.keepPassword
+                  : c.enterPassword
               }
               type="password"
               value={password}
@@ -465,7 +474,7 @@ function EmailSettings({ token }: { token: string }) {
               onChange={(event) => update("enableSsl", event.target.checked)}
               type="checkbox"
             />
-            Usar SSL
+            {c.useSsl}
           </label>
           <label className="toggle-field">
             <input
@@ -475,7 +484,7 @@ function EmailSettings({ token }: { token: string }) {
               }
               type="checkbox"
             />
-            Usar credenciais padrao
+            {c.useDefaultCredentials}
           </label>
         </div>
       </section>
@@ -486,13 +495,13 @@ function EmailSettings({ token }: { token: string }) {
             <Mail size={19} />
           </span>
           <div>
-            <h2>Remetente e administradores</h2>
-            <p>Identidade dos e-mails e destinatarios administrativos.</p>
+            <h2>{c.senderAndAdmins}</h2>
+            <p>{c.senderDescription}</p>
           </div>
         </div>
         <div className="form-grid">
           <div>
-            <label>E-mail remetente</label>
+            <label>{c.senderEmail}</label>
             <input
               onChange={(event) => update("emailFrom", event.target.value)}
               type="email"
@@ -500,14 +509,14 @@ function EmailSettings({ token }: { token: string }) {
             />
           </div>
           <div>
-            <label>Nome do remetente</label>
+            <label>{c.senderName}</label>
             <input
               onChange={(event) => update("emailNameFrom", event.target.value)}
               value={configuration.emailNameFrom}
             />
           </div>
           <div className="full-field">
-            <label>E-mails administrativos</label>
+            <label>{c.adminEmails}</label>
             <input
               onChange={(event) => update("adminEmails", event.target.value)}
               value={configuration.adminEmails}
@@ -526,7 +535,7 @@ function EmailSettings({ token }: { token: string }) {
       <div className="email-settings-actions">
         <button className="primary-button compact-button" disabled={saving}>
           <Save size={17} />
-          {saving ? "Salvando..." : "Salvar configuracoes"}
+          {saving ? c.saving : c.saveSettings}
         </button>
       </div>
     </form>
@@ -538,3 +547,92 @@ function getErrorMessage(error: unknown) {
     ? error.message
     : "Nao foi possivel concluir a operacao.";
 }
+
+const settingsCopy = {
+  pt: {
+    globalAdmin: "Administração global",
+    title: "Configurações",
+    subtitle: "Gerencie empresas e serviços operacionais do sistema.",
+    companies: "Empresas",
+    email: "E-mail",
+    deactivate: "Desativar",
+    activate: "Ativar",
+    companyArticle: "a empresa",
+    searchCompany: "Buscar por nome, CNPJ ou slug",
+    search: "Buscar",
+    newCompany: "Nova empresa",
+    loadingCompanies: "Carregando empresas...",
+    taxIdMissing: "CNPJ não informado",
+    activeFemale: "Ativa",
+    inactiveFemale: "Inativa",
+    edit: "Editar",
+    companyRequired: "Informe o nome e o slug da empresa.",
+    company: "Empresa",
+    editCompany: "Editar empresa",
+    name: "Nome",
+    activeCompany: "Empresa ativa",
+    cancel: "Cancelar",
+    saving: "Salvando...",
+    saveCompany: "Salvar empresa",
+    emailUpdated: "Configurações de e-mail atualizadas.",
+    loadingEmail: "Carregando configurações de e-mail...",
+    smtpServer: "Servidor SMTP",
+    smtpDescription: "Credenciais utilizadas para os envios do sistema.",
+    port: "Porta",
+    deliveryMethod: "Método de entrega",
+    newSmtpPassword: "Nova senha SMTP",
+    keepPassword: "Deixe vazio para manter a senha atual",
+    enterPassword: "Informe a senha SMTP",
+    useSsl: "Usar SSL",
+    useDefaultCredentials: "Usar credenciais padrão",
+    senderAndAdmins: "Remetente e administradores",
+    senderDescription: "Identidade dos e-mails e destinatários administrativos.",
+    senderEmail: "E-mail remetente",
+    senderName: "Nome do remetente",
+    adminEmails: "E-mails administrativos",
+    saveSettings: "Salvar configurações"
+  },
+  en: {
+    globalAdmin: "Global administration",
+    title: "Settings",
+    subtitle: "Manage companies and operational system services.",
+    companies: "Companies",
+    email: "Email",
+    deactivate: "Deactivate",
+    activate: "Activate",
+    companyArticle: "company",
+    searchCompany: "Search by name, tax ID, or slug",
+    search: "Search",
+    newCompany: "New company",
+    loadingCompanies: "Loading companies...",
+    taxIdMissing: "Tax ID not provided",
+    activeFemale: "Active",
+    inactiveFemale: "Inactive",
+    edit: "Edit",
+    companyRequired: "Enter the company name and slug.",
+    company: "Company",
+    editCompany: "Edit company",
+    name: "Name",
+    activeCompany: "Active company",
+    cancel: "Cancel",
+    saving: "Saving...",
+    saveCompany: "Save company",
+    emailUpdated: "Email settings updated.",
+    loadingEmail: "Loading email settings...",
+    smtpServer: "SMTP server",
+    smtpDescription: "Credentials used for system email delivery.",
+    port: "Port",
+    deliveryMethod: "Delivery method",
+    newSmtpPassword: "New SMTP password",
+    keepPassword: "Leave blank to keep the current password",
+    enterPassword: "Enter the SMTP password",
+    useSsl: "Use SSL",
+    useDefaultCredentials: "Use default credentials",
+    senderAndAdmins: "Sender and administrators",
+    senderDescription: "Email identity and administrative recipients.",
+    senderEmail: "Sender email",
+    senderName: "Sender name",
+    adminEmails: "Administrative emails",
+    saveSettings: "Save settings"
+  }
+};

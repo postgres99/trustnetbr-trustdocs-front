@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  CalendarDays,
   ChevronRight,
   FileStack,
+  ListFilter,
   LoaderCircle,
   RefreshCw,
-  Search
+  Search,
+  X
 } from "lucide-react";
 import { ApiError } from "../../services/api/client";
+import { EnumOption, getRequestStatuses } from "../../services/api/enums";
 import {
   getRequests,
   RequestSummary
 } from "../../services/api/requests";
+import { useI18n } from "../../i18n/I18nContext";
 
 interface RequestsViewProps {
   token: string;
@@ -28,8 +33,13 @@ export function RequestsView({
   onCreate,
   onOpen
 }: RequestsViewProps) {
+  const { formatDateTime, locale, t } = useI18n();
   const [requests, setRequests] = useState<RequestSummary[]>([]);
+  const [statuses, setStatuses] = useState<EnumOption[]>([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -38,12 +48,17 @@ export function RequestsView({
     setError("");
 
     try {
-      setRequests(await getRequests(token, mineOnly));
+      const [requestData, statusData] = await Promise.all([
+        getRequests(token, mineOnly),
+        getRequestStatuses().catch(() => [])
+      ]);
+      setRequests(requestData);
+      setStatuses(statusData);
     } catch (requestError) {
       setError(
         requestError instanceof ApiError
           ? requestError.message
-          : "Nao foi possivel carregar as solicitacoes."
+          : t("requests.loadError")
       );
     } finally {
       setLoading(false);
@@ -52,27 +67,46 @@ export function RequestsView({
 
   useEffect(() => {
     void loadRequests();
-  }, [token, mineOnly]);
+  }, [token, mineOnly, locale]);
 
   const visibleRequests = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
-    const filtered = normalizedSearch
-      ? requests.filter((request) =>
-          [request.id, request.templateName, request.clientName, request.statusDescription]
-            .join(" ")
-            .toLocaleLowerCase()
-            .includes(normalizedSearch)
-        )
-      : requests;
+    const from = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
+    const to = dateTo ? new Date(`${dateTo}T23:59:59.999`) : null;
+    const filtered = requests.filter((request) => {
+      const createdAt = new Date(request.createDate);
+      const matchesSearch =
+        !normalizedSearch ||
+        [request.id, request.templateName, request.clientName, request.statusDescription]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(normalizedSearch);
+
+      return (
+        matchesSearch &&
+        (!statusFilter || request.status === Number(statusFilter)) &&
+        (!from || createdAt >= from) &&
+        (!to || createdAt <= to)
+      );
+    });
 
     return compact ? filtered.slice(0, 5) : filtered;
-  }, [compact, requests, search]);
+  }, [compact, dateFrom, dateTo, requests, search, statusFilter]);
+
+  const hasFilters = Boolean(search || statusFilter || dateFrom || dateTo);
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("");
+    setDateFrom("");
+    setDateTo("");
+  }
 
   if (loading) {
     return (
       <div className="request-feedback">
         <LoaderCircle className="spin" size={22} />
-        <span>Carregando solicitacoes...</span>
+        <span>{t("requests.loading")}</span>
       </div>
     );
   }
@@ -81,11 +115,11 @@ export function RequestsView({
     return (
       <div className="request-feedback error-state">
         <AlertCircle size={22} />
-        <strong>Nao foi possivel carregar os dados</strong>
+        <strong>{t("requests.loadError")}</strong>
         <span>{error}</span>
         <button className="secondary-button" onClick={() => void loadRequests()}>
           <RefreshCw size={16} />
-          Tentar novamente
+          {t("requests.retry")}
         </button>
       </div>
     );
@@ -100,18 +134,72 @@ export function RequestsView({
             <input
               aria-label="Buscar solicitacoes"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por cliente, modelo, status ou numero"
+              placeholder={t("requests.searchPlaceholder")}
               value={search}
             />
           </div>
+          <div className="request-filter-field">
+            <ListFilter size={16} />
+            <select
+              aria-label={t("requests.statusFilter")}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              value={statusFilter}
+            >
+              <option value="">{t("requests.allStatuses")}</option>
+              {statuses.map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.description}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="date-filter">
+            <CalendarDays size={16} />
+            <span>{t("requests.from")}</span>
+            <input
+              aria-label={t("requests.from")}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDateFrom(value);
+                if (dateTo && value > dateTo) {
+                  setDateTo("");
+                }
+              }}
+              type="date"
+              value={dateFrom}
+            />
+          </label>
+          <label className="date-filter">
+            <span>{t("requests.to")}</span>
+            <input
+              aria-label={t("requests.to")}
+              min={dateFrom || undefined}
+              onChange={(event) => setDateTo(event.target.value)}
+              type="date"
+              value={dateTo}
+            />
+          </label>
+          {hasFilters && (
+            <button
+              className="secondary-button clear-filters"
+              onClick={clearFilters}
+              type="button"
+            >
+              <X size={15} />
+              {t("requests.clearFilters")}
+            </button>
+          )}
           <button
             aria-label="Atualizar solicitacoes"
             className="icon-button bordered"
             onClick={() => void loadRequests()}
-            title="Atualizar"
+            title={t("common.refresh")}
           >
             <RefreshCw size={17} />
           </button>
+          <span className="request-result-count">
+            {t("requests.resultCount", { count: visibleRequests.length })}
+          </span>
         </div>
       )}
 
@@ -121,16 +209,16 @@ export function RequestsView({
             <FileStack size={24} />
           </span>
           <h3>
-            {search ? "Nenhum resultado encontrado" : "Nenhuma solicitacao encontrada"}
+            {hasFilters ? t("requests.noResults") : t("requests.none")}
           </h3>
           <p>
-            {search
-              ? "Ajuste os termos da busca para localizar outra solicitacao."
-              : "Crie a primeira solicitacao para iniciar o fluxo de documentos."}
+            {hasFilters
+              ? t("requests.noResultsHint")
+              : t("requests.emptyHint")}
           </p>
-          {!search && onCreate && (
+          {!hasFilters && onCreate && (
             <button className="secondary-button" onClick={onCreate}>
-              Criar solicitacao
+              {t("requests.create")}
             </button>
           )}
         </div>
@@ -139,11 +227,11 @@ export function RequestsView({
           <table className="request-table">
             <thead>
               <tr>
-                <th>Solicitacao</th>
-                <th>Cliente</th>
-                <th>Status</th>
-                <th>Criada em</th>
-                <th>Enviada em</th>
+                <th>{t("requests.request")}</th>
+                <th>{t("requests.client")}</th>
+                <th>{t("requests.status")}</th>
+                <th>{t("requests.createdAt")}</th>
+                <th>{t("requests.submittedAt")}</th>
                 <th aria-label="Acoes" />
               </tr>
             </thead>
@@ -161,14 +249,14 @@ export function RequestsView({
                       status={request.status}
                     />
                   </td>
-                  <td>{formatDate(request.createDate)}</td>
-                  <td>{formatDate(request.submittedAtUtc)}</td>
+                  <td>{formatDate(request.createDate, formatDateTime)}</td>
+                  <td>{formatDate(request.submittedAtUtc, formatDateTime)}</td>
                   <td>
                     <button
-                      aria-label={`Abrir solicitacao ${request.id}`}
+                      aria-label={t("requests.open", { id: request.id })}
                       className="row-action"
                       onClick={() => onOpen?.(request.id)}
-                      title="Abrir solicitacao"
+                      title={t("requests.open", { id: request.id })}
                     >
                       <ChevronRight size={18} />
                     </button>
@@ -213,11 +301,10 @@ function StatusBadge({
   return <span className={`status-badge ${tone}`}>{description}</span>;
 }
 
-function formatDate(value: string | null) {
+function formatDate(
+  value: string | null,
+  formatter: (value: string | Date) => string
+) {
   if (!value) return "-";
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short"
-  }).format(new Date(value));
+  return formatter(value);
 }

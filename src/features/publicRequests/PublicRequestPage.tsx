@@ -19,8 +19,11 @@ import {
   submitPublicRequest,
   uploadPublicDocument
 } from "../../services/api/publicRequests";
+import { useI18n } from "../../i18n/I18nContext";
 
 export function PublicRequestPage({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? publicCopy.en : publicCopy.pt;
   const [request, setRequest] = useState<PublicRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyDocumentType, setBusyDocumentType] = useState<number | null>(null);
@@ -52,7 +55,12 @@ export function PublicRequestPage({ token }: { token: string }) {
     if (!file) return;
 
     if (file.size > 20 * 1024 * 1024) {
-      setError("O arquivo deve ter no maximo 20 MB.");
+      setError(c.maxFileSize);
+      return;
+    }
+
+    if (!isAllowedDocument(file)) {
+      setError(c.invalidFileFormat);
       return;
     }
 
@@ -69,7 +77,7 @@ export function PublicRequestPage({ token }: { token: string }) {
 
   async function handleDelete(requirement: PublicRequestRequirement) {
     if (!requirement.currentDocument) return;
-    if (!window.confirm(`Remover o arquivo "${requirement.currentDocument.fileName}"?`)) {
+    if (!window.confirm(`${c.removeFile} "${requirement.currentDocument.fileName}"?`)) {
       return;
     }
 
@@ -87,7 +95,7 @@ export function PublicRequestPage({ token }: { token: string }) {
   }
 
   async function handleSubmit() {
-    if (!window.confirm("Confirmar o envio definitivo dos documentos?")) return;
+    if (!window.confirm(c.confirmSubmit)) return;
 
     setSubmitting(true);
     setError("");
@@ -105,7 +113,7 @@ export function PublicRequestPage({ token }: { token: string }) {
       <main className="public-request-page public-centered">
         <BrandHeader />
         <LoaderCircle className="spin" size={28} />
-        <span>Carregando solicitacao...</span>
+        <span>{c.loading}</span>
       </main>
     );
   }
@@ -115,11 +123,11 @@ export function PublicRequestPage({ token }: { token: string }) {
       <main className="public-request-page public-centered">
         <BrandHeader />
         <AlertCircle size={34} />
-        <h1>Link indisponivel</h1>
-        <p>{error || "Esta solicitacao nao foi encontrada."}</p>
+        <h1>{c.unavailable}</h1>
+        <p>{error || c.notFound}</p>
         <button className="secondary-button" onClick={() => void loadRequest()}>
           <RefreshCw size={16} />
-          Tentar novamente
+          {c.tryAgain}
         </button>
       </main>
     );
@@ -140,10 +148,10 @@ export function PublicRequestPage({ token }: { token: string }) {
       <section className="public-request-shell">
         <header className="public-request-heading">
           <div>
-            <span className="eyebrow">Envio seguro de documentos</span>
+            <span className="eyebrow">{c.secureUpload}</span>
             <h1>{request.templateName}</h1>
             <p>
-              Ola, {request.clientName}. Envie os documentos solicitados abaixo.
+              {c.greeting.replace("{client}", request.clientName)}
             </p>
           </div>
           <div className="public-status">
@@ -156,8 +164,11 @@ export function PublicRequestPage({ token }: { token: string }) {
           <div className={`expiration-note ${request.isExpired ? "expired" : ""}`}>
             <Calendar size={17} />
             {request.isExpired
-              ? "Este acesso expirou."
-              : `Acesso disponivel ate ${formatDate(request.expiresAtUtc)}.`}
+              ? c.expired
+              : c.availableUntil.replace(
+                  "{date}",
+                  formatDate(request.expiresAtUtc, locale)
+                )}
           </div>
         )}
 
@@ -167,10 +178,8 @@ export function PublicRequestPage({ token }: { token: string }) {
               <Check size={25} />
             </span>
             <div>
-              <strong>Documentos enviados</strong>
-              <p>
-                Recebemos seus arquivos. Eles agora seguirao para analise.
-              </p>
+              <strong>{c.submitted}</strong>
+              <p>{c.submittedHint}</p>
             </div>
           </div>
         )}
@@ -180,9 +189,11 @@ export function PublicRequestPage({ token }: { token: string }) {
         <section className="public-progress">
           <div>
             <strong>
-              {requiredUploaded} de {requiredTotal} obrigatorios enviados
+              {c.progress
+                .replace("{uploaded}", String(requiredUploaded))
+                .replace("{total}", String(requiredTotal))}
             </strong>
-            <span>Arquivos com tamanho maximo de 20 MB.</span>
+            <span>{c.fileHint}</span>
           </div>
           <div className="progress-track">
             <span
@@ -208,7 +219,7 @@ export function PublicRequestPage({ token }: { token: string }) {
                   </span>
                   <div className="document-info">
                     <strong>{requirement.documentTypeName}</strong>
-                    <span>{requirement.isRequired ? "Obrigatorio" : "Opcional"}</span>
+                    <span>{requirement.isRequired ? c.required : c.optional}</span>
                     {document && (
                       <div className="uploaded-file">
                         <span>{document.fileName}</span>
@@ -227,8 +238,9 @@ export function PublicRequestPage({ token }: { token: string }) {
                         ) : (
                           <FileUp size={17} />
                         )}
-                        {document ? "Substituir" : "Selecionar arquivo"}
+                        {document ? c.replace : c.selectFile}
                         <input
+                          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                           disabled={busy}
                           onChange={(event) =>
                             void handleUpload(requirement.documentTypeId, event)
@@ -242,7 +254,7 @@ export function PublicRequestPage({ token }: { token: string }) {
                           className="icon-button danger-button"
                           disabled={busy}
                           onClick={() => void handleDelete(requirement)}
-                          title="Remover arquivo"
+                          title={c.removeFile}
                         >
                           <Trash2 size={17} />
                         </button>
@@ -257,15 +269,15 @@ export function PublicRequestPage({ token }: { token: string }) {
         {request.canUpload && (
           <footer className="public-submit">
             <div>
-              <strong>Revise os arquivos antes de enviar</strong>
-              <span>Depois do envio, os documentos nao poderao ser alterados.</span>
+              <strong>{c.reviewBeforeSubmit}</strong>
+              <span>{c.noChangesAfterSubmit}</span>
             </div>
             <button
               className="primary-button compact-button"
               disabled={!request.canSubmit || submitting}
               onClick={() => void handleSubmit()}
             >
-              {submitting ? "Enviando..." : "Enviar documentos"}
+              {submitting ? c.submitting : c.submit}
             </button>
           </footer>
         )}
@@ -291,8 +303,8 @@ function getErrorMessage(error: unknown) {
     : "Nao foi possivel concluir a operacao.";
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(
+function formatDate(value: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(
     new Date(value)
   );
 }
@@ -300,4 +312,77 @@ function formatDate(value: string) {
 function formatBytes(value: number) {
   if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const publicCopy = {
+  pt: {
+    maxFileSize: "O arquivo deve ter no máximo 20 MB.",
+    removeFile: "Remover o arquivo",
+    confirmSubmit: "Confirmar o envio definitivo dos documentos?",
+    loading: "Carregando solicitação...",
+    unavailable: "Link indisponível",
+    notFound: "Esta solicitação não foi encontrada.",
+    tryAgain: "Tentar novamente",
+    secureUpload: "Envio seguro de documentos",
+    greeting: "Olá, {client}. Envie os documentos solicitados abaixo.",
+    expired: "Este acesso expirou.",
+    availableUntil: "Acesso disponível até {date}.",
+    submitted: "Documentos enviados",
+    submittedHint: "Recebemos seus arquivos. Eles agora seguirão para análise.",
+    progress: "{uploaded} de {total} obrigatórios enviados",
+    fileHint: "PDF, JPG, PNG ou WebP, com tamanho máximo de 20 MB.",
+    invalidFileFormat: "Selecione um arquivo PDF, JPG, PNG ou WebP válido.",
+    required: "Obrigatório",
+    optional: "Opcional",
+    replace: "Substituir",
+    selectFile: "Selecionar arquivo",
+    reviewBeforeSubmit: "Revise os arquivos antes de enviar",
+    noChangesAfterSubmit:
+      "Depois do envio, os documentos não poderão ser alterados.",
+    submitting: "Enviando...",
+    submit: "Enviar documentos"
+  },
+  en: {
+    maxFileSize: "The file must be no larger than 20 MB.",
+    removeFile: "Remove file",
+    confirmSubmit: "Confirm the final document submission?",
+    loading: "Loading request...",
+    unavailable: "Link unavailable",
+    notFound: "This request was not found.",
+    tryAgain: "Try again",
+    secureUpload: "Secure document upload",
+    greeting: "Hello, {client}. Upload the requested documents below.",
+    expired: "This access has expired.",
+    availableUntil: "Access available until {date}.",
+    submitted: "Documents submitted",
+    submittedHint: "We received your files. They will now be reviewed.",
+    progress: "{uploaded} of {total} required documents uploaded",
+    fileHint: "PDF, JPG, PNG, or WebP files up to 20 MB.",
+    invalidFileFormat: "Select a valid PDF, JPG, PNG, or WebP file.",
+    required: "Required",
+    optional: "Optional",
+    replace: "Replace",
+    selectFile: "Select file",
+    reviewBeforeSubmit: "Review the files before submitting",
+    noChangesAfterSubmit: "Documents cannot be changed after submission.",
+    submitting: "Submitting...",
+    submit: "Submit documents"
+  }
+};
+
+function isAllowedDocument(file: File) {
+  const extension = file.name.split(".").pop()?.toLocaleLowerCase();
+  const allowedExtensions = ["pdf", "jpg", "jpeg", "png", "webp"];
+  const allowedTypes = [
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+  ];
+
+  return Boolean(
+    extension &&
+      allowedExtensions.includes(extension) &&
+      allowedTypes.includes(file.type.toLocaleLowerCase())
+  );
 }

@@ -10,6 +10,8 @@ dist/
 web-dev.log
 web-dev.err.log
 *.tsbuildinfo
+.env.local
+.env.*.local
 
 # Compiled Java class files
 *.class

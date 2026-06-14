@@ -1,4 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export const SESSION_EXPIRED_EVENT = "trustnetdocs:session-expired";
 let apiCulture = navigator.language || "pt-BR";
 
 export interface ApiResponse<T> {
@@ -22,6 +23,12 @@ export class ApiError extends Error {
 
 export function setApiCulture(culture: string) {
   apiCulture = culture || "pt-BR";
+}
+
+function notifySessionExpired(response: Response, token?: string) {
+  if (response.status === 401 && token) {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
 }
 
 export async function apiRequest<T>(
@@ -48,6 +55,7 @@ export async function apiRequest<T>(
 
   const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
   if (!response.ok || !payload?.success) {
+    notifySessionExpired(response, token);
     throw new ApiError(
       payload?.message ?? "Nao foi possivel concluir a solicitacao.",
       response.status,
@@ -67,6 +75,7 @@ export async function apiDownload(path: string, token: string) {
   });
 
   if (!response.ok) {
+    notifySessionExpired(response, token);
     const payload = (await response.json().catch(() => null)) as ApiResponse<unknown> | null;
     throw new ApiError(
       payload?.message ?? "Nao foi possivel baixar o documento.",
@@ -101,6 +110,7 @@ export async function apiBlob(
   if (response.status === 404) return null;
 
   if (!response.ok) {
+    notifySessionExpired(response, token);
     const payload = (await response.json().catch(() => null)) as ApiResponse<unknown> | null;
     throw new ApiError(
       payload?.message ?? "Nao foi possivel carregar o arquivo.",

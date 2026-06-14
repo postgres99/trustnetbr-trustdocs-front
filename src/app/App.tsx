@@ -4,6 +4,8 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleUserRound,
+  Eye,
+  EyeOff,
   FileCheck2,
   FileStack,
   FolderKanban,
@@ -24,7 +26,11 @@ import {
   HealthStatus,
   login
 } from "../services/api/auth";
-import { ApiError, setApiCulture } from "../services/api/client";
+import {
+  ApiError,
+  SESSION_EXPIRED_EVENT,
+  setApiCulture
+} from "../services/api/client";
 import { getRequests, RequestSummary } from "../services/api/requests";
 import {
   getRequestMetrics,
@@ -38,12 +44,25 @@ import { ProfileView } from "../features/profile/ProfileView";
 import { UsersView } from "../features/users/UsersView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { CatalogsView } from "../features/catalogs/CatalogsView";
+import {
+  MessageKey,
+  useI18n
+} from "../i18n/I18nContext";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams
+} from "react-router-dom";
 
 const TOKEN_STORAGE_KEY = "trustnetdocs.accessToken";
 
 interface NavigationItem {
   id: ViewId;
-  label: string;
+  path: string;
+  labelKey: MessageKey;
   icon: typeof FileStack;
   roles?: string[];
 }
@@ -52,37 +71,49 @@ type ViewId =
   | "dashboard"
   | "my-requests"
   | "requests"
-  | "new-request"
-  | "request-detail"
-  | "profile"
   | "clients"
   | "catalogs"
   | "users"
   | "settings";
 
 const navigation: NavigationItem[] = [
-  { id: "dashboard", label: "Visao geral", icon: FolderKanban },
-  { id: "my-requests", label: "Minhas solicitacoes", icon: FileCheck2 },
+  { id: "dashboard", path: "/", labelKey: "nav.dashboard", icon: FolderKanban },
+  { id: "my-requests", path: "/my-requests", labelKey: "nav.myRequests", icon: FileCheck2 },
   {
     id: "requests",
-    label: "Solicitacoes",
+    path: "/requests",
+    labelKey: "nav.requests",
     icon: FileStack,
     roles: ["SuperAdmin", "Administrator"]
   },
   {
     id: "clients",
-    label: "Clientes",
+    path: "/clients",
+    labelKey: "nav.clients",
     icon: Building2,
     roles: ["SuperAdmin", "Administrator"]
   },
   {
     id: "catalogs",
-    label: "Catalogos",
+    path: "/catalogs",
+    labelKey: "nav.catalogs",
     icon: LibraryBig,
     roles: ["SuperAdmin", "Administrator"]
   },
-  { id: "users", label: "Usuarios", icon: Users, roles: ["SuperAdmin"] },
-  { id: "settings", label: "Configuracoes", icon: Settings, roles: ["SuperAdmin"] }
+  {
+    id: "users",
+    path: "/users",
+    labelKey: "nav.users",
+    icon: Users,
+    roles: ["SuperAdmin", "Administrator"]
+  },
+  {
+    id: "settings",
+    path: "/settings",
+    labelKey: "nav.settings",
+    icon: Settings,
+    roles: ["SuperAdmin"]
+  }
 ];
 
 function hasAnyRole(user: CurrentUser, roles?: string[]) {
@@ -90,11 +121,25 @@ function hasAnyRole(user: CurrentUser, roles?: string[]) {
 }
 
 export function App() {
+  const { setLocale } = useI18n();
   const publicToken = getPublicRequestToken();
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY));
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [sessionLoading, setSessionLoading] = useState(Boolean(token));
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    function expireSession() {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      setToken(null);
+      setUser(null);
+      setSessionExpired(true);
+    }
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, expireSession);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expireSession);
+  }, []);
 
   useEffect(() => {
     if (publicToken) return;
@@ -115,6 +160,7 @@ export function App() {
     getCurrentUser(token)
       .then((currentUser) => {
         setApiCulture(currentUser.preferredCulture);
+        setLocale(currentUser.preferredCulture);
         setUser(currentUser);
       })
       .catch(() => {
@@ -127,8 +173,10 @@ export function App() {
   function handleAuthenticated(accessToken: string, currentUser: CurrentUser) {
     localStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
     setApiCulture(currentUser.preferredCulture);
+    setLocale(currentUser.preferredCulture);
     setToken(accessToken);
     setUser(currentUser);
+    setSessionExpired(false);
   }
 
   function handleLogout() {
@@ -146,7 +194,13 @@ export function App() {
   }
 
   if (!token || !user) {
-    return <LoginScreen health={health} onAuthenticated={handleAuthenticated} />;
+    return (
+      <LoginScreen
+        health={health}
+        sessionExpired={sessionExpired}
+        onAuthenticated={handleAuthenticated}
+      />
+    );
   }
 
   return (
@@ -171,13 +225,22 @@ function AppLoading() {
 
 function LoginScreen({
   health,
+  sessionExpired,
   onAuthenticated
 }: {
   health: HealthStatus | null;
+  sessionExpired: boolean;
   onAuthenticated: (token: string, user: CurrentUser) => void;
 }) {
-  const [loginValue, setLoginValue] = useState("tenantadmin@trustnetdocs.local");
-  const [password, setPassword] = useState("TrustNet@123");
+  const { t } = useI18n();
+  const [loginValue, setLoginValue] = useState(
+    import.meta.env.DEV ? import.meta.env.VITE_DEV_LOGIN ?? "" : ""
+  );
+  const [password, setPassword] = useState(
+    import.meta.env.DEV ? import.meta.env.VITE_DEV_PASSWORD ?? "" : ""
+  );
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -189,7 +252,7 @@ function LoginScreen({
     try {
       const result = await login(loginValue, password);
       if (result.requiresTwoFactor || !result.accessToken) {
-        setError("Esta conta requer a etapa de autenticacao em dois fatores.");
+        setError(t("auth.twoFactor"));
         return;
       }
 
@@ -199,7 +262,7 @@ function LoginScreen({
       setError(
         requestError instanceof ApiError
           ? requestError.message
-          : "Nao foi possivel acessar a API."
+          : t("auth.apiUnavailable")
       );
     } finally {
       setSubmitting(false);
@@ -214,16 +277,13 @@ function LoginScreen({
           <span>TrustNetDocs</span>
         </div>
         <div className="login-message">
-          <span className="eyebrow">Gestao segura de documentos</span>
-          <h1>Documentos organizados. Acessos sob controle.</h1>
-          <p>
-            Centralize solicitacoes, acompanhe envios e revise documentos em um
-            unico ambiente por empresa.
-          </p>
+          <span className="eyebrow">{t("auth.secureDocuments")}</span>
+          <h1>{t("auth.hero")}</h1>
+          <p>{t("auth.description")}</p>
         </div>
         <div className="security-note">
           <ShieldCheck size={20} />
-          <span>Permissoes por perfil e isolamento por empresa</span>
+          <span>{t("auth.security")}</span>
         </div>
       </section>
 
@@ -235,39 +295,67 @@ function LoginScreen({
           </div>
 
           <div className="form-heading">
-            <h2>Acesse sua conta</h2>
-            <p>Use suas credenciais para continuar.</p>
+            <h2>{t("auth.title")}</h2>
+            <p>{t("auth.subtitle")}</p>
           </div>
 
           <form onSubmit={handleSubmit}>
-            <label htmlFor="login">E-mail</label>
+            {sessionExpired && (
+              <div className="session-feedback">{t("auth.sessionExpired")}</div>
+            )}
+            <label htmlFor="login">{t("auth.email")}</label>
             <input
               id="login"
               autoComplete="username"
+              required
               value={loginValue}
               onChange={(event) => setLoginValue(event.target.value)}
-              placeholder="nome@empresa.com"
+              placeholder={t("auth.emailPlaceholder")}
             />
 
             <div className="label-row">
-              <label htmlFor="password">Senha</label>
-              <button className="text-button" type="button">
-                Esqueci minha senha
+              <label htmlFor="password">{t("auth.password")}</label>
+              <button
+                className="text-button"
+                onClick={() => setRecoveryOpen(true)}
+                type="button"
+              >
+                {t("auth.forgot")}
               </button>
             </div>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Sua senha"
-            />
+            <div className="password-input">
+              <input
+                id="password"
+                type={passwordVisible ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={t("auth.passwordPlaceholder")}
+              />
+              <button
+                aria-label={
+                  passwordVisible
+                    ? t("auth.hidePassword")
+                    : t("auth.showPassword")
+                }
+                className="password-visibility"
+                onClick={() => setPasswordVisible((current) => !current)}
+                title={
+                  passwordVisible
+                    ? t("auth.hidePassword")
+                    : t("auth.showPassword")
+                }
+                type="button"
+              >
+                {passwordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
 
             {error && <div className="form-error">{error}</div>}
 
             <button className="primary-button" disabled={submitting} type="submit">
-              {submitting ? "Entrando..." : "Entrar"}
+              {submitting ? t("auth.loggingIn") : t("auth.login")}
               {!submitting && <ChevronRight size={18} />}
             </button>
           </form>
@@ -275,11 +363,41 @@ function LoginScreen({
           <div className={`api-status ${health ? "online" : "offline"}`}>
             <span className="status-dot" />
             {health
-              ? `API e banco ${health.databaseStatus.toLowerCase()}`
-              : "API indisponivel"}
+              ? t("auth.apiHealthy", {
+                  status: health.databaseStatus.toLocaleLowerCase()
+                })
+              : t("auth.apiUnavailable")}
           </div>
         </div>
       </section>
+
+      {recoveryOpen && (
+        <div
+          className="dialog-backdrop centered-dialog-backdrop"
+          onMouseDown={() => setRecoveryOpen(false)}
+        >
+          <section
+            className="password-dialog recovery-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <span className="success-icon">
+              <ShieldCheck size={25} />
+            </span>
+            <h2>{t("auth.recoveryTitle")}</h2>
+            <p>{t("auth.recoveryDescription")}</p>
+            <div className="recovery-note">
+              {t("auth.recoverySecurity")}
+            </div>
+            <button
+              className="primary-button compact-button"
+              onClick={() => setRecoveryOpen(false)}
+            >
+              {t("common.close")}
+            </button>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -297,12 +415,10 @@ function Workspace({
   onLogout: () => void;
   onUserUpdated: (user: CurrentUser) => void;
 }) {
+  const { t } = useI18n();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState<ViewId>("dashboard");
-  const [selectedRequest, setSelectedRequest] = useState<{
-    id: number;
-    mineOnly: boolean;
-  } | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(0);
   const visibleNavigation = useMemo(
@@ -358,17 +474,22 @@ function Workspace({
         <nav>
           {visibleNavigation.map((item) => {
             const Icon = item.icon;
+            const active =
+              item.path === "/"
+                ? location.pathname === "/"
+                : location.pathname === item.path ||
+                  location.pathname.startsWith(`${item.path}/`);
             return (
               <button
-                className={activeView === item.id ? "active" : ""}
+                className={active ? "active" : ""}
                 key={item.id}
                 onClick={() => {
-                  setActiveView(item.id);
+                  navigate(item.path);
                   setSidebarOpen(false);
                 }}
               >
                 <Icon size={18} />
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </button>
             );
           })}
@@ -377,11 +498,11 @@ function Workspace({
         <div className="sidebar-footer">
           <div className={`compact-status ${health ? "online" : ""}`}>
             <span className="status-dot" />
-            Sistema {health ? "online" : "indisponivel"}
+            {health ? t("nav.systemOnline") : t("nav.systemOffline")}
           </div>
           <button onClick={onLogout}>
             <LogOut size={18} />
-            <span>Sair</span>
+            <span>{t("nav.logout")}</span>
           </button>
         </div>
       </aside>
@@ -398,12 +519,12 @@ function Workspace({
           <div className="topbar-spacer" />
           <button
             className="language-button"
-            onClick={() => setActiveView("profile")}
+            onClick={() => navigate("/profile")}
           >
             <Languages size={17} />
             {user.preferredCulture}
           </button>
-          <button className="user-menu" onClick={() => setActiveView("profile")}>
+          <button className="user-menu" onClick={() => navigate("/profile")}>
             <span className="avatar">
               {avatarUrl ? (
                 <img alt="" src={avatarUrl} />
@@ -413,89 +534,136 @@ function Workspace({
             </span>
             <span className="user-meta">
               <strong>{user.displayName}</strong>
-              <small>{getRoleLabel(user.roles)}</small>
+              <small>{getRoleLabel(user.roles, t)}</small>
             </span>
           </button>
         </header>
 
         <main className="dashboard">
-          {activeView === "dashboard" && (
-            <Dashboard
-              token={token}
-              user={user}
-              onCreateRequest={() => setActiveView("new-request")}
-              onOpenRequests={() =>
-                setActiveView(
-                  hasAnyRole(user, ["SuperAdmin", "Administrator"])
-                    ? "requests"
-                    : "my-requests"
-                )
-              }
-              onOpenRequest={(requestId, mineOnly) => {
-                setSelectedRequest({ id: requestId, mineOnly });
-                setActiveView("request-detail");
-              }}
-            />
-          )}
-          {activeView === "my-requests" && (
-            <RequestsPage
-              token={token}
-              mineOnly
-              onOpen={(requestId) => {
-                setSelectedRequest({ id: requestId, mineOnly: true });
-                setActiveView("request-detail");
-              }}
-              title="Minhas solicitacoes"
-            />
-          )}
-          {activeView === "requests" && (
-            <RequestsPage
-              token={token}
-              mineOnly={false}
-              onCreate={() => setActiveView("new-request")}
-              onOpen={(requestId) => {
-                setSelectedRequest({ id: requestId, mineOnly: false });
-                setActiveView("request-detail");
-              }}
-              title="Solicitacoes"
-            />
-          )}
-          {activeView === "new-request" && (
-            <CreateRequestView
-              token={token}
-              onCancel={() => setActiveView("requests")}
-              onFinished={() => setActiveView("requests")}
-            />
-          )}
-          {activeView === "request-detail" && selectedRequest && (
-            <RequestDetailsView
-              token={token}
-              requestId={selectedRequest.id}
-              mineOnly={selectedRequest.mineOnly}
-              onBack={() =>
-                setActiveView(selectedRequest.mineOnly ? "my-requests" : "requests")
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <Dashboard
+                  token={token}
+                  user={user}
+                  onCreateRequest={() => navigate("/requests/new")}
+                  onOpenRequests={() =>
+                    navigate(
+                      hasAnyRole(user, ["SuperAdmin", "Administrator"])
+                        ? "/requests"
+                        : "/my-requests"
+                    )
+                  }
+                  onOpenRequest={(requestId, mineOnly) =>
+                    navigate(
+                      mineOnly
+                        ? `/my-requests/${requestId}`
+                        : `/requests/${requestId}`
+                    )
+                  }
+                />
               }
             />
-          )}
-          {activeView === "clients" && <ClientsView token={token} />}
-          {activeView === "catalogs" && <CatalogsView token={token} />}
-          {activeView === "profile" && (
-            <ProfileView
-              token={token}
-              user={user}
-              onAvatarChanged={() => setAvatarVersion((value) => value + 1)}
-              onUserUpdated={onUserUpdated}
+            <Route
+              path="/my-requests"
+              element={
+                <RequestsPage
+                  token={token}
+                  mineOnly
+                  onOpen={(requestId) => navigate(`/my-requests/${requestId}`)}
+                  title={t("nav.myRequests")}
+                />
+              }
             />
-          )}
-          {activeView === "users" && (
-            <UsersView currentUser={user} token={token} />
-          )}
-          {activeView === "settings" && (
-            <SettingsView token={token} />
-          )}
+            <Route
+              path="/my-requests/:requestId"
+              element={<RequestDetailsRoute token={token} mineOnly />}
+            />
+            {hasAnyRole(user, ["SuperAdmin", "Administrator"]) && (
+              <>
+                <Route
+                  path="/requests"
+                  element={
+                    <RequestsPage
+                      token={token}
+                      mineOnly={false}
+                      onCreate={() => navigate("/requests/new")}
+                      onOpen={(requestId) => navigate(`/requests/${requestId}`)}
+                      title={t("nav.requests")}
+                    />
+                  }
+                />
+                <Route
+                  path="/requests/new"
+                  element={
+                    <CreateRequestView
+                      token={token}
+                      onCancel={() => navigate("/requests")}
+                      onFinished={() => navigate("/requests")}
+                    />
+                  }
+                />
+                <Route
+                  path="/requests/:requestId"
+                  element={<RequestDetailsRoute token={token} mineOnly={false} />}
+                />
+                <Route path="/clients" element={<ClientsView token={token} />} />
+                <Route path="/catalogs" element={<CatalogsView token={token} />} />
+              </>
+            )}
+            <Route
+              path="/profile"
+              element={
+                <ProfileView
+                  token={token}
+                  user={user}
+                  onAvatarChanged={() => setAvatarVersion((value) => value + 1)}
+                  onUserUpdated={onUserUpdated}
+                />
+              }
+            />
+            {hasAnyRole(user, ["SuperAdmin", "Administrator"]) && (
+              <>
+                <Route
+                  path="/users"
+                  element={<UsersView currentUser={user} token={token} />}
+                />
+                {hasAnyRole(user, ["SuperAdmin"]) && (
+                  <Route path="/settings" element={<SettingsView token={token} />} />
+                )}
+              </>
+            )}
+            <Route path="*" element={<Navigate replace to="/" />} />
+          </Routes>
         </main>
       </div>
     </div>
+  );
+}
+
+function RequestDetailsRoute({
+  token,
+  mineOnly
+}: {
+  token: string;
+  mineOnly: boolean;
+}) {
+  const navigate = useNavigate();
+  const { requestId } = useParams();
+  const parsedRequestId = Number(requestId);
+
+  if (!Number.isInteger(parsedRequestId) || parsedRequestId <= 0) {
+    return <Navigate replace to={mineOnly ? "/my-requests" : "/requests"} />;
+  }
+
+  return (
+    <RequestDetailsView
+      token={token}
+      requestId={parsedRequestId}
+      mineOnly={mineOnly}
+      onBack={() => navigate(mineOnly ? "/my-requests" : "/requests")}
+    />
   );
 }
 
@@ -512,6 +680,7 @@ function Dashboard({
   onOpenRequest: (requestId: number, mineOnly: boolean) => void;
   onOpenRequests: () => void;
 }) {
+  const { t } = useI18n();
   const [requests, setRequests] = useState<RequestSummary[]>([]);
   const canManageRequests = hasAnyRole(user, ["SuperAdmin", "Administrator"]);
 
@@ -525,16 +694,18 @@ function Dashboard({
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Visao geral</span>
-          <h1>Ola, {user.displayName.split(" ")[0]}</h1>
-          <p>Acompanhe o trabalho recente da sua empresa.</p>
+          <span className="eyebrow">{t("nav.dashboard")}</span>
+          <h1>
+            {t("dashboard.hello", { name: user.displayName.split(" ")[0] })}
+          </h1>
+          <p>{t("dashboard.subtitle")}</p>
         </div>
         {canManageRequests && (
           <button
             className="primary-button compact-button"
             onClick={onCreateRequest}
           >
-            Nova solicitacao
+            {t("dashboard.newRequest")}
             <ChevronRight size={17} />
           </button>
         )}
@@ -542,35 +713,35 @@ function Dashboard({
 
       <section className="metric-grid">
         <Metric
-          label="Aguardando envio"
+          label={t("dashboard.waiting")}
           value={String(metrics.waiting)}
-          detail="Solicitacoes abertas"
+          detail={t("dashboard.openRequests")}
         />
         <Metric
-          label="Em analise"
+          label={t("dashboard.reviewing")}
           value={String(metrics.reviewing)}
-          detail="Documentos recebidos"
+          detail={t("dashboard.received")}
         />
         <Metric
-          label="Aprovadas"
+          label={t("dashboard.approved")}
           value={String(metrics.approved)}
-          detail="Concluidas"
+          detail={t("dashboard.completed")}
         />
         <Metric
-          label="Reenvio solicitado"
+          label={t("dashboard.resubmission")}
           value={String(metrics.resubmission)}
-          detail="Precisam de atencao"
+          detail={t("dashboard.attention")}
         />
       </section>
 
       <section className="dashboard-section">
         <div className="section-heading">
           <div>
-            <h2>Solicitacoes recentes</h2>
-            <p>Ultimas movimentacoes disponiveis para o seu perfil.</p>
+            <h2>{t("dashboard.recent")}</h2>
+            <p>{t("dashboard.recentSubtitle")}</p>
           </div>
           <button className="text-button" onClick={onOpenRequests}>
-            Ver todas
+            {t("dashboard.viewAll")}
           </button>
         </div>
         <RequestsView
@@ -598,16 +769,17 @@ function RequestsPage({
   onOpen?: (requestId: number) => void;
   title: string;
 }) {
+  const { t } = useI18n();
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Documentos</span>
+          <span className="eyebrow">{t("requests.documents")}</span>
           <h1>{title}</h1>
           <p>
             {mineOnly
-              ? "Acompanhe as solicitacoes criadas por voce."
-              : "Acompanhe os envios e o andamento dos documentos da empresa."}
+              ? t("requests.mineSubtitle")
+              : t("requests.allSubtitle")}
           </p>
         </div>
         {!mineOnly && (
@@ -615,7 +787,7 @@ function RequestsPage({
             className="primary-button compact-button"
             onClick={onCreate}
           >
-            Nova solicitacao
+            {t("dashboard.newRequest")}
             <ChevronRight size={17} />
           </button>
         )}
@@ -629,22 +801,6 @@ function RequestsPage({
         />
       </section>
     </>
-  );
-}
-
-function ComingSoon({ view }: { view: ViewId }) {
-  const labels: Partial<Record<ViewId, string>> = {
-    clients: "Clientes",
-    users: "Usuarios",
-    settings: "Configuracoes"
-  };
-
-  return (
-    <section className="placeholder-page">
-      <span className="eyebrow">Proximo modulo</span>
-      <h1>{labels[view]}</h1>
-      <p>Esta area sera conectada a API nas proximas etapas.</p>
-    </section>
   );
 }
 
@@ -677,10 +833,13 @@ function BrandMark() {
   );
 }
 
-function getRoleLabel(roles: string[]) {
-  if (roles.includes("SuperAdmin")) return "Administrador do sistema";
-  if (roles.includes("Administrator")) return "Administrador da empresa";
-  return "Usuario";
+function getRoleLabel(
+  roles: string[],
+  t: (key: MessageKey) => string
+) {
+  if (roles.includes("SuperAdmin")) return t("roles.systemAdmin");
+  if (roles.includes("Administrator")) return t("roles.tenantAdmin");
+  return t("roles.user");
 }
 
 function getPublicRequestToken() {

@@ -18,6 +18,17 @@ export interface UserDetails extends UserListItem {
   availableRoles: string[];
 }
 
+export interface UserAuditEvent {
+  id: number;
+  occurredAtUtc: string;
+  eventType: string;
+  eventTypeDescription: string;
+  actorDisplay: string | null;
+  actorUserId: string;
+  ipAddress: string | null;
+  dataJson: string | null;
+}
+
 export interface CreateUserInput {
   email: string;
   firstName: string;
@@ -117,6 +128,14 @@ export function resetUserPassword(token: string, userId: string) {
   return apiRequest<{ userId: string; temporaryPassword: string }>(
     `/users/${encodeURIComponent(userId)}/reset-password`,
     { method: "POST" },
+    token
+  );
+}
+
+export function getUserAudit(token: string, userId: string) {
+  return apiRequest<UserAuditEvent[]>(
+    `/users/${encodeURIComponent(userId)}/audit`,
+    {},
     token
   );
 }

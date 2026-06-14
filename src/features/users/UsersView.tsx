@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Check,
   Clipboard,
+  History,
   KeyRound,
   Pencil,
   Plus,
@@ -23,15 +24,18 @@ import { getTenants, Tenant } from "../../services/api/tenants";
 import {
   createUser,
   getUser,
+  getUserAudit,
   getUsers,
   resetUserPassword,
   toggleUserActive,
   updateUser,
   updateUserPreferences,
   updateUserRoles,
+  UserAuditEvent,
   UserDetails,
   UserListItem
 } from "../../services/api/users";
+import { useI18n } from "../../i18n/I18nContext";
 
 export function UsersView({
   token,
@@ -40,6 +44,9 @@ export function UsersView({
   token: string;
   currentUser: CurrentUser;
 }) {
+  const { locale, formatDateTime } = useI18n();
+  const c = locale === "en-US" ? usersCopy.en : usersCopy.pt;
+  const isSystemAdmin = currentUser.roles.includes("SuperAdmin");
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [roles, setRoles] = useState<NamedOption[]>([]);
@@ -54,6 +61,9 @@ export function UsersView({
     title: string;
     password: string;
   } | null>(null);
+  const [auditUser, setAuditUser] = useState<UserListItem | null>(null);
+  const [auditEvents, setAuditEvents] = useState<UserAuditEvent[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   async function loadUsers(query = search) {
     setLoading(true);
@@ -68,9 +78,23 @@ export function UsersView({
   }
 
   useEffect(() => {
+    const tenantsRequest = isSystemAdmin
+      ? getTenants(token)
+      : Promise.resolve(
+          currentUser.tenantId
+            ? [{
+                id: currentUser.tenantId,
+                name: c.currentCompany,
+                cnpj: null,
+                slug: `tenant-${currentUser.tenantId}`,
+                isActive: true
+              }]
+            : []
+        );
+
     Promise.all([
       getUsers(token),
-      getTenants(token),
+      tenantsRequest,
       getApplicationRoles(),
       getSupportedCultures(),
       getSupportedTimeZones()
@@ -78,13 +102,17 @@ export function UsersView({
       .then(([userData, tenantData, roleData, cultureData, timeZoneData]) => {
         setUsers(userData);
         setTenants(tenantData.filter((tenant) => tenant.isActive));
-        setRoles(roleData);
+        setRoles(
+          isSystemAdmin
+            ? roleData
+            : roleData.filter((role) => role.value !== "SuperAdmin")
+        );
         setCultures(cultureData);
         setTimeZones(timeZoneData);
       })
       .catch((requestError) => setError(getErrorMessage(requestError)))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [c.currentCompany, currentUser.tenantId, isSystemAdmin, token]);
 
   async function openEdit(userId: string) {
     setError("");
@@ -98,7 +126,7 @@ export function UsersView({
 
   async function toggleActive(user: UserListItem) {
     if (user.id === currentUser.id && user.isActive) return;
-    if (!window.confirm(`${user.isActive ? "Desativar" : "Ativar"} ${user.fullName}?`)) {
+    if (!window.confirm(`${user.isActive ? c.deactivate : c.activate} ${user.fullName}?`)) {
       return;
     }
 
@@ -111,18 +139,33 @@ export function UsersView({
   }
 
   async function resetPassword(user: UserListItem) {
-    if (!window.confirm(`Gerar uma nova senha temporaria para ${user.fullName}?`)) {
+    if (!window.confirm(`${c.resetConfirm} ${user.fullName}?`)) {
       return;
     }
 
     try {
       const result = await resetUserPassword(token, user.id);
       setOneTimePassword({
-        title: `Senha temporaria de ${user.fullName}`,
+        title: `${c.temporaryPasswordOf} ${user.fullName}`,
         password: result.temporaryPassword
       });
     } catch (requestError) {
       setError(getErrorMessage(requestError));
+    }
+  }
+
+  async function openAudit(user: UserListItem) {
+    setAuditUser(user);
+    setAuditEvents([]);
+    setAuditLoading(true);
+    setError("");
+    try {
+      setAuditEvents(await getUserAudit(token, user.id));
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+      setAuditUser(null);
+    } finally {
+      setAuditLoading(false);
     }
   }
 
@@ -138,9 +181,11 @@ export function UsersView({
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Administracao global</span>
-          <h1>Usuarios</h1>
-          <p>Gerencie acessos, empresas, perfis e credenciais.</p>
+          <span className="eyebrow">
+            {isSystemAdmin ? c.globalAdmin : c.companyAdmin}
+          </span>
+          <h1>{c.title}</h1>
+          <p>{c.subtitle}</p>
         </div>
         <button
           className="primary-button compact-button"
@@ -150,7 +195,7 @@ export function UsersView({
           }}
         >
           <Plus size={17} />
-          Novo usuario
+          {c.newUser}
         </button>
       </div>
 
@@ -168,25 +213,25 @@ export function UsersView({
             <Search size={17} />
             <input
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome ou e-mail"
+              placeholder={c.searchPlaceholder}
               value={search}
             />
           </div>
-          <button className="secondary-button search-button">Buscar</button>
+          <button className="secondary-button search-button">{c.search}</button>
         </form>
 
         {loading ? (
-          <div className="request-feedback">Carregando usuarios...</div>
+          <div className="request-feedback">{c.loading}</div>
         ) : (
           <div className="request-table-wrap">
             <table className="request-table users-table">
               <thead>
                 <tr>
-                  <th>Usuario</th>
-                  <th>Empresa</th>
-                  <th>Perfis</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
+                  <th>{c.user}</th>
+                  <th>{c.company}</th>
+                  <th>{c.roles}</th>
+                  <th>{c.status}</th>
+                  <th>{c.actions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,7 +253,7 @@ export function UsersView({
                       <span
                         className={`status-badge ${user.isActive ? "success" : "danger"}`}
                       >
-                        {user.isActive ? "Ativo" : "Inativo"}
+                        {user.isActive ? c.active : c.inactive}
                       </span>
                     </td>
                     <td>
@@ -216,16 +261,23 @@ export function UsersView({
                         <button
                           className="icon-button"
                           onClick={() => void openEdit(user.id)}
-                          title="Editar"
+                          title={c.edit}
                         >
                           <Pencil size={17} />
                         </button>
                         <button
                           className="icon-button"
                           onClick={() => void resetPassword(user)}
-                          title="Redefinir senha"
+                          title={c.resetPassword}
                         >
                           <KeyRound size={17} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          onClick={() => void openAudit(user)}
+                          title={c.auditHistory}
+                        >
+                          <History size={17} />
                         </button>
                         <button
                           className={`icon-button ${user.isActive ? "danger-button" : "bordered"}`}
@@ -233,10 +285,10 @@ export function UsersView({
                           onClick={() => void toggleActive(user)}
                           title={
                             user.id === currentUser.id && user.isActive
-                              ? "Voce nao pode desativar seu proprio usuario"
+                              ? c.cannotDeactivateSelf
                               : user.isActive
-                                ? "Desativar"
-                                : "Ativar"
+                                ? c.deactivate
+                                : c.activate
                           }
                         >
                           <Power size={17} />
@@ -254,6 +306,8 @@ export function UsersView({
       {formOpen && (
         <UserForm
           cultures={cultures}
+          copy={c}
+          currentUser={currentUser}
           roles={roles}
           tenants={tenants}
           timeZones={timeZones}
@@ -269,7 +323,7 @@ export function UsersView({
             );
             setFormOpen(false);
             setOneTimePassword({
-              title: `Senha temporaria de ${user.fullName}`,
+              title: `${c.temporaryPasswordOf} ${user.fullName}`,
               password
             });
           }}
@@ -284,8 +338,20 @@ export function UsersView({
       {oneTimePassword && (
         <OneTimePasswordDialog
           password={oneTimePassword.password}
+          copy={c}
           title={oneTimePassword.title}
           onClose={() => setOneTimePassword(null)}
+        />
+      )}
+
+      {auditUser && (
+        <UserAuditDialog
+          events={auditEvents}
+          formatDateTime={formatDateTime}
+          loading={auditLoading}
+          user={auditUser}
+          copy={c}
+          onClose={() => setAuditUser(null)}
         />
       )}
     </>
@@ -295,20 +361,24 @@ export function UsersView({
 function UserForm({
   token,
   user,
+  currentUser,
   tenants,
   roles,
   cultures,
   timeZones,
+  copy,
   onClose,
   onCreated,
   onUpdated
 }: {
   token: string;
   user: UserDetails | null;
+  currentUser: CurrentUser;
   tenants: Tenant[];
   roles: NamedOption[];
   cultures: NamedOption[];
   timeZones: NamedOption[];
+  copy: Record<keyof (typeof usersCopy)["pt"], string>;
   onClose: () => void;
   onCreated: (user: UserDetails, password: string) => void;
   onUpdated: (user: UserDetails) => void;
@@ -318,7 +388,10 @@ function UserForm({
   const [firstName, setFirstName] = useState(names.firstName);
   const [lastName, setLastName] = useState(names.lastName);
   const [cpfCnpj, setCpfCnpj] = useState(user?.cpfCnpj ?? "");
-  const [tenantId, setTenantId] = useState(user?.tenantId ? String(user.tenantId) : "");
+  const actorIsSystemAdmin = currentUser.roles.includes("SuperAdmin");
+  const [tenantId, setTenantId] = useState(
+    String(user?.tenantId ?? currentUser.tenantId ?? "")
+  );
   const [selectedRoles, setSelectedRoles] = useState<string[]>(user?.roles ?? ["Operator"]);
   const [culture, setCulture] = useState(user?.preferredCulture ?? "pt-BR");
   const [timeZone, setTimeZone] = useState(user?.timeZoneId ?? "America/Sao_Paulo");
@@ -332,15 +405,15 @@ function UserForm({
     setError("");
 
     if (!email.trim() || !firstName.trim() || !lastName.trim()) {
-      setError("Informe e-mail, nome e sobrenome.");
+      setError(copy.requiredIdentity);
       return;
     }
     if (selectedRoles.length === 0) {
-      setError("Selecione pelo menos um perfil.");
+      setError(copy.selectRole);
       return;
     }
     if (!isSystemAdmin && !tenantId) {
-      setError("Selecione uma empresa para administradores e usuarios regulares.");
+      setError(copy.selectCompany);
       return;
     }
 
@@ -361,7 +434,18 @@ function UserForm({
         return;
       }
 
-      let updated = await updateUser(token, user.id, {
+      const rolesChanged = !sameRoles(user.roles, selectedRoles);
+      const promotingToSystemAdmin =
+        rolesChanged &&
+        selectedRoles.includes("SuperAdmin") &&
+        !user.roles.includes("SuperAdmin");
+
+      let updated = user;
+      if (promotingToSystemAdmin) {
+        updated = await updateUserRoles(token, user.id, selectedRoles);
+      }
+
+      updated = await updateUser(token, user.id, {
         email: email.trim(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -369,7 +453,7 @@ function UserForm({
         tenantId: tenantId ? Number(tenantId) : null
       });
 
-      if (!sameRoles(updated.roles, selectedRoles)) {
+      if (rolesChanged && !promotingToSystemAdmin) {
         updated = await updateUserRoles(token, user.id, selectedRoles);
       }
 
@@ -411,8 +495,8 @@ function UserForm({
       >
         <header className="dialog-header">
           <div>
-            <span className="eyebrow">Administracao</span>
-            <h2>{user ? "Editar usuario" : "Novo usuario"}</h2>
+            <span className="eyebrow">{copy.administration}</span>
+            <h2>{user ? copy.editUser : copy.newUser}</h2>
           </div>
           <button className="icon-button" onClick={onClose}>
             <X size={20} />
@@ -422,7 +506,7 @@ function UserForm({
         <form className="dialog-form user-form" onSubmit={handleSubmit}>
           <div className="form-grid">
             <div className="full-field">
-              <label>E-mail</label>
+              <label>{copy.email}</label>
               <input
                 autoFocus
                 onChange={(event) => setEmail(event.target.value)}
@@ -431,21 +515,21 @@ function UserForm({
               />
             </div>
             <div>
-              <label>Nome</label>
+              <label>{copy.firstName}</label>
               <input
                 onChange={(event) => setFirstName(event.target.value)}
                 value={firstName}
               />
             </div>
             <div>
-              <label>Sobrenome</label>
+              <label>{copy.lastName}</label>
               <input
                 onChange={(event) => setLastName(event.target.value)}
                 value={lastName}
               />
             </div>
             <div className="full-field">
-              <label>CPF/CNPJ</label>
+              <label>{copy.taxId}</label>
               <input
                 onChange={(event) => setCpfCnpj(event.target.value)}
                 value={cpfCnpj}
@@ -454,7 +538,7 @@ function UserForm({
           </div>
 
           <div>
-            <label>Perfis</label>
+            <label>{copy.roles}</label>
             <div className="role-options">
               {roles.map((role) => (
                 <label
@@ -477,14 +561,14 @@ function UserForm({
           </div>
 
           <div>
-            <label>Empresa</label>
+            <label>{copy.company}</label>
             <select
-              disabled={isSystemAdmin}
+              disabled={isSystemAdmin || !actorIsSystemAdmin}
               onChange={(event) => setTenantId(event.target.value)}
               value={isSystemAdmin ? "" : tenantId}
             >
               <option value="">
-                {isSystemAdmin ? "Nao se aplica ao SuperAdmin" : "Selecione"}
+                {isSystemAdmin ? copy.notApplicable : copy.select}
               </option>
               {tenants.map((tenant) => (
                 <option key={tenant.id} value={tenant.id}>
@@ -496,7 +580,7 @@ function UserForm({
 
           <div className="form-grid">
             <div>
-              <label>Idioma</label>
+              <label>{copy.language}</label>
               <select
                 onChange={(event) => setCulture(event.target.value)}
                 value={culture}
@@ -509,7 +593,7 @@ function UserForm({
               </select>
             </div>
             <div>
-              <label>Fuso horario</label>
+              <label>{copy.timeZone}</label>
               <select
                 onChange={(event) => setTimeZone(event.target.value)}
                 value={timeZone}
@@ -527,10 +611,14 @@ function UserForm({
 
           <footer className="dialog-actions">
             <button className="secondary-button" onClick={onClose} type="button">
-              Cancelar
+              {copy.cancel}
             </button>
             <button className="primary-button compact-button" disabled={saving}>
-              {saving ? "Salvando..." : user ? "Salvar alteracoes" : "Criar usuario"}
+              {saving
+                ? copy.saving
+                : user
+                  ? copy.saveChanges
+                  : copy.createUser}
             </button>
           </footer>
         </form>
@@ -542,10 +630,12 @@ function UserForm({
 function OneTimePasswordDialog({
   title,
   password,
+  copy,
   onClose
 }: {
   title: string;
   password: string;
+  copy: Record<keyof (typeof usersCopy)["pt"], string>;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -557,7 +647,7 @@ function OneTimePasswordDialog({
           <KeyRound size={25} />
         </span>
         <h2>{title}</h2>
-        <p>Copie agora. Esta senha nao podera ser consultada novamente.</p>
+        <p>{copy.copyPasswordNow}</p>
         <div className="temporary-password">
           <code>{password}</code>
           <button
@@ -571,11 +661,91 @@ function OneTimePasswordDialog({
           </button>
         </div>
         <button className="primary-button compact-button" onClick={onClose}>
-          Concluir
+          {copy.finish}
         </button>
       </section>
     </div>
   );
+}
+
+function UserAuditDialog({
+  user,
+  events,
+  loading,
+  formatDateTime,
+  copy,
+  onClose
+}: {
+  user: UserListItem;
+  events: UserAuditEvent[];
+  loading: boolean;
+  formatDateTime: (value: string | Date) => string;
+  copy: Record<keyof (typeof usersCopy)["pt"], string>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="dialog-backdrop" onMouseDown={onClose}>
+      <section
+        className="side-dialog user-audit-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="dialog-header">
+          <div>
+            <span className="eyebrow">{copy.audit}</span>
+            <h2>{user.fullName}</h2>
+            <p>{user.email}</p>
+          </div>
+          <button className="icon-button" onClick={onClose} title={copy.close}>
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="user-audit-content">
+          {loading ? (
+            <div className="request-feedback">{copy.loadingAudit}</div>
+          ) : events.length === 0 ? (
+            <div className="request-feedback">{copy.noAuditEvents}</div>
+          ) : (
+            <div className="timeline user-audit-timeline">
+              {events.map((event) => (
+                <article className="timeline-item" key={event.id}>
+                  <span className="timeline-dot" />
+                  <div>
+                    <strong>{event.eventTypeDescription}</strong>
+                    <span>
+                      {formatDateTime(event.occurredAtUtc)} · {copy.by}{" "}
+                      {event.actorDisplay || event.actorUserId}
+                    </span>
+                    {event.ipAddress && (
+                      <span>{copy.ipAddress}: {event.ipAddress}</span>
+                    )}
+                    {getAuditDetails(event.dataJson) && (
+                      <code className="audit-details">
+                        {getAuditDetails(event.dataJson)}
+                      </code>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function getAuditDetails(dataJson: string | null) {
+  if (!dataJson || dataJson === "{}") return "";
+
+  try {
+    const data = JSON.parse(dataJson) as Record<string, unknown>;
+    return Object.entries(data)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(" · ");
+  } catch {
+    return dataJson;
+  }
 }
 
 function getTenantName(tenantId: number | null, tenants: Tenant[]) {
@@ -607,3 +777,108 @@ function getErrorMessage(error: unknown) {
     ? error.message
     : "Nao foi possivel concluir a operacao.";
 }
+
+const usersCopy = {
+  pt: {
+    deactivate: "Desativar",
+    activate: "Ativar",
+    resetConfirm: "Gerar uma nova senha temporária para",
+    temporaryPasswordOf: "Senha temporária de",
+    globalAdmin: "Administração global",
+    companyAdmin: "Administração da empresa",
+    currentCompany: "Minha empresa",
+    title: "Usuários",
+    subtitle: "Gerencie acessos, empresas, perfis e credenciais.",
+    newUser: "Novo usuário",
+    searchPlaceholder: "Buscar por nome ou e-mail",
+    search: "Buscar",
+    loading: "Carregando usuários...",
+    user: "Usuário",
+    company: "Empresa",
+    roles: "Perfis",
+    status: "Status",
+    actions: "Ações",
+    active: "Ativo",
+    inactive: "Inativo",
+    edit: "Editar",
+    resetPassword: "Redefinir senha",
+    auditHistory: "Histórico de auditoria",
+    cannotDeactivateSelf: "Você não pode desativar seu próprio usuário",
+    requiredIdentity: "Informe e-mail, nome e sobrenome.",
+    selectRole: "Selecione pelo menos um perfil.",
+    selectCompany: "Selecione uma empresa para administradores e usuários regulares.",
+    administration: "Administração",
+    editUser: "Editar usuário",
+    email: "E-mail",
+    firstName: "Nome",
+    lastName: "Sobrenome",
+    taxId: "CPF/CNPJ",
+    notApplicable: "Não se aplica ao SuperAdmin",
+    select: "Selecione",
+    language: "Idioma",
+    timeZone: "Fuso horário",
+    cancel: "Cancelar",
+    saving: "Salvando...",
+    saveChanges: "Salvar alterações",
+    createUser: "Criar usuário",
+    copyPasswordNow: "Copie agora. Esta senha não poderá ser consultada novamente.",
+    finish: "Concluir",
+    audit: "Auditoria",
+    loadingAudit: "Carregando histórico...",
+    noAuditEvents: "Nenhum evento de auditoria registrado.",
+    close: "Fechar",
+    by: "por",
+    ipAddress: "Endereço IP"
+  },
+  en: {
+    deactivate: "Deactivate",
+    activate: "Activate",
+    resetConfirm: "Generate a new temporary password for",
+    temporaryPasswordOf: "Temporary password for",
+    globalAdmin: "Global administration",
+    companyAdmin: "Company administration",
+    currentCompany: "My company",
+    title: "Users",
+    subtitle: "Manage access, companies, roles, and credentials.",
+    newUser: "New user",
+    searchPlaceholder: "Search by name or email",
+    search: "Search",
+    loading: "Loading users...",
+    user: "User",
+    company: "Company",
+    roles: "Roles",
+    status: "Status",
+    actions: "Actions",
+    active: "Active",
+    inactive: "Inactive",
+    edit: "Edit",
+    resetPassword: "Reset password",
+    auditHistory: "Audit history",
+    cannotDeactivateSelf: "You cannot deactivate your own user",
+    requiredIdentity: "Enter email, first name, and last name.",
+    selectRole: "Select at least one role.",
+    selectCompany: "Select a company for administrators and regular users.",
+    administration: "Administration",
+    editUser: "Edit user",
+    email: "Email",
+    firstName: "First name",
+    lastName: "Last name",
+    taxId: "Tax ID",
+    notApplicable: "Not applicable to SuperAdmin",
+    select: "Select",
+    language: "Language",
+    timeZone: "Time zone",
+    cancel: "Cancel",
+    saving: "Saving...",
+    saveChanges: "Save changes",
+    createUser: "Create user",
+    copyPasswordNow: "Copy now. This password cannot be retrieved again.",
+    finish: "Finish",
+    audit: "Audit",
+    loadingAudit: "Loading history...",
+    noAuditEvents: "No audit events recorded.",
+    close: "Close",
+    by: "by",
+    ipAddress: "IP address"
+  }
+};

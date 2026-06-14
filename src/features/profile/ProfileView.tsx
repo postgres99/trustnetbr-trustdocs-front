@@ -22,6 +22,10 @@ import {
   getSupportedTimeZones,
   NamedOption
 } from "../../services/api/enums";
+import {
+  MessageKey,
+  useI18n
+} from "../../i18n/I18nContext";
 
 interface ProfileViewProps {
   token: string;
@@ -36,6 +40,7 @@ export function ProfileView({
   onAvatarChanged,
   onUserUpdated
 }: ProfileViewProps) {
+  const { setLocale, t } = useI18n();
   const [cultures, setCultures] = useState<NamedOption[]>([]);
   const [timeZones, setTimeZones] = useState<NamedOption[]>([]);
   const [culture, setCulture] = useState(user.preferredCulture);
@@ -76,8 +81,9 @@ export function ProfileView({
     try {
       setApiCulture(culture);
       const updated = await updateCurrentUserPreferences(token, timeZone, culture);
+      setLocale(updated.preferredCulture);
       onUserUpdated(updated);
-      setMessage("Preferencias atualizadas.");
+      setMessage(t("profile.preferencesSaved"));
     } catch (requestError) {
       setApiCulture(user.preferredCulture);
       setError(getErrorMessage(requestError));
@@ -92,11 +98,11 @@ export function ProfileView({
     if (!file) return;
 
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setError("Selecione uma imagem JPG, PNG ou WebP.");
+      setError(t("profile.invalidPhoto"));
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      setError("A imagem deve ter no maximo 2 MB.");
+      setError(t("profile.photoTooLarge"));
       return;
     }
 
@@ -108,7 +114,7 @@ export function ProfileView({
       const avatar = await getCurrentUserAvatar(token);
       setAvatarUrl(avatar ? URL.createObjectURL(avatar) : null);
       onAvatarChanged();
-      setMessage("Foto atualizada.");
+      setMessage(t("profile.photoUpdated"));
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -117,7 +123,7 @@ export function ProfileView({
   }
 
   async function removeAvatar() {
-    if (!window.confirm("Remover sua foto de perfil?")) return;
+    if (!window.confirm(`${t("profile.removePhoto")}?`)) return;
 
     setUploadingAvatar(true);
     setError("");
@@ -125,7 +131,7 @@ export function ProfileView({
       await removeCurrentUserAvatar(token);
       setAvatarUrl(null);
       onAvatarChanged();
-      setMessage("Foto removida.");
+      setMessage(t("profile.photoRemoved"));
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -137,9 +143,9 @@ export function ProfileView({
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Minha conta</span>
-          <h1>Perfil</h1>
-          <p>Gerencie sua foto, idioma, fuso horario e senha.</p>
+          <span className="eyebrow">{t("profile.account")}</span>
+          <h1>{t("profile.title")}</h1>
+          <p>{t("profile.subtitle")}</p>
         </div>
       </div>
 
@@ -162,7 +168,7 @@ export function ProfileView({
           </div>
           <strong>{user.displayName}</strong>
           <span>{user.email}</span>
-          <small>{getRoleLabel(user.roles)}</small>
+          <small>{getRoleLabel(user.roles, t)}</small>
 
           <div className="profile-avatar-actions">
             <label className="secondary-button">
@@ -171,7 +177,7 @@ export function ProfileView({
               ) : (
                 <Camera size={16} />
               )}
-              Alterar foto
+              {t("profile.changePhoto")}
               <input
                 accept="image/jpeg,image/png,image/webp"
                 disabled={uploadingAvatar}
@@ -185,26 +191,26 @@ export function ProfileView({
                 className="icon-button danger-button"
                 disabled={uploadingAvatar}
                 onClick={() => void removeAvatar()}
-                title="Remover foto"
+                title={t("profile.removePhoto")}
               >
                 <Trash2 size={17} />
               </button>
             )}
           </div>
-          <p>JPG, PNG ou WebP. Tamanho maximo de 2 MB.</p>
+          <p>{t("profile.photoHint")}</p>
         </section>
 
         <div className="profile-content">
           <form className="profile-card profile-form" onSubmit={savePreferences}>
             <div className="profile-section-heading">
               <div>
-                <h2>Preferencias regionais</h2>
-                <p>Aplicadas aos status, enums, datas e proximas telas.</p>
+                <h2>{t("profile.preferences")}</h2>
+                <p>{t("profile.preferencesHint")}</p>
               </div>
             </div>
             <div className="form-grid">
               <div>
-                <label htmlFor="profile-culture">Idioma</label>
+                <label htmlFor="profile-culture">{t("profile.language")}</label>
                 <select
                   id="profile-culture"
                   onChange={(event) => setCulture(event.target.value)}
@@ -218,7 +224,7 @@ export function ProfileView({
                 </select>
               </div>
               <div>
-                <label htmlFor="profile-time-zone">Fuso horario</label>
+                <label htmlFor="profile-time-zone">{t("profile.timeZone")}</label>
                 <select
                   id="profile-time-zone"
                   onChange={(event) => setTimeZone(event.target.value)}
@@ -238,7 +244,9 @@ export function ProfileView({
                 disabled={savingPreferences}
               >
                 <Save size={16} />
-                {savingPreferences ? "Salvando..." : "Salvar preferencias"}
+                {savingPreferences
+                  ? t("common.saving")
+                  : t("profile.savePreferences")}
               </button>
             </div>
           </form>
@@ -251,6 +259,7 @@ export function ProfileView({
 }
 
 function PasswordForm({ token }: { token: string }) {
+  const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -264,11 +273,11 @@ function PasswordForm({ token }: { token: string }) {
     setMessage("");
 
     if (newPassword.length < 8) {
-      setError("A nova senha deve conter pelo menos 8 caracteres.");
+      setError(t("profile.passwordTooShort"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("A confirmacao da senha nao confere.");
+      setError(t("profile.passwordMismatch"));
       return;
     }
 
@@ -283,7 +292,7 @@ function PasswordForm({ token }: { token: string }) {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setMessage("Senha alterada com sucesso.");
+      setMessage(t("profile.passwordChanged"));
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -298,13 +307,13 @@ function PasswordForm({ token }: { token: string }) {
           <KeyRound size={19} />
         </span>
         <div>
-          <h2>Alterar senha</h2>
-          <p>Use pelo menos 8 caracteres e uma senha diferente da atual.</p>
+          <h2>{t("profile.changePassword")}</h2>
+          <p>{t("profile.passwordHint")}</p>
         </div>
       </div>
       <div className="password-fields">
         <div>
-          <label htmlFor="current-password">Senha atual</label>
+          <label htmlFor="current-password">{t("profile.currentPassword")}</label>
           <input
             autoComplete="current-password"
             id="current-password"
@@ -314,7 +323,7 @@ function PasswordForm({ token }: { token: string }) {
           />
         </div>
         <div>
-          <label htmlFor="new-password">Nova senha</label>
+          <label htmlFor="new-password">{t("profile.newPassword")}</label>
           <input
             autoComplete="new-password"
             id="new-password"
@@ -324,7 +333,7 @@ function PasswordForm({ token }: { token: string }) {
           />
         </div>
         <div>
-          <label htmlFor="confirm-password">Confirmar nova senha</label>
+          <label htmlFor="confirm-password">{t("profile.confirmPassword")}</label>
           <input
             autoComplete="new-password"
             id="confirm-password"
@@ -338,17 +347,20 @@ function PasswordForm({ token }: { token: string }) {
       {message && <div className="success-feedback">{message}</div>}
       <div className="profile-form-actions">
         <button className="secondary-button" disabled={saving}>
-          {saving ? "Alterando..." : "Alterar senha"}
+          {saving ? t("common.saving") : t("profile.changePassword")}
         </button>
       </div>
     </form>
   );
 }
 
-function getRoleLabel(roles: string[]) {
-  if (roles.includes("SuperAdmin")) return "Administrador do sistema";
-  if (roles.includes("Administrator")) return "Administrador da empresa";
-  return "Usuario";
+function getRoleLabel(
+  roles: string[],
+  t: (key: MessageKey) => string
+) {
+  if (roles.includes("SuperAdmin")) return t("roles.systemAdmin");
+  if (roles.includes("Administrator")) return t("roles.tenantAdmin");
+  return t("roles.user");
 }
 
 function getErrorMessage(error: unknown) {

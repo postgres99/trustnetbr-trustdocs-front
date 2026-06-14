@@ -20,8 +20,11 @@ import {
   updateClient
 } from "../../services/api/clients";
 import { ApiError } from "../../services/api/client";
+import { useI18n } from "../../i18n/I18nContext";
 
 export function ClientsView({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? clientsCopy.en : clientsCopy.pt;
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -57,7 +60,7 @@ export function ClientsView({ token }: { token: string }) {
 
   async function handleDelete(client: Client) {
     const confirmed = window.confirm(
-      `Excluir o cliente "${client.fullName}"?\n\nO cadastro sera desativado, mas o historico das solicitacoes sera preservado.`
+      `${c.deleteConfirm} "${client.fullName}"?\n\n${c.deleteHint}`
     );
     if (!confirmed) return;
 
@@ -87,13 +90,13 @@ export function ClientsView({ token }: { token: string }) {
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Cadastros</span>
-          <h1>Clientes</h1>
-          <p>Gerencie as pessoas e empresas que recebem solicitacoes.</p>
+          <span className="eyebrow">{c.records}</span>
+          <h1>{c.title}</h1>
+          <p>{c.subtitle}</p>
         </div>
         <button className="primary-button compact-button" onClick={openNewClient}>
           <Plus size={17} />
-          Novo cliente
+          {c.newClient}
         </button>
       </div>
 
@@ -112,18 +115,18 @@ export function ClientsView({ token }: { token: string }) {
             <input
               aria-label="Buscar clientes"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome, CPF/CNPJ ou e-mail"
+              placeholder={c.searchPlaceholder}
               value={search}
             />
           </div>
           <button className="secondary-button search-button" type="submit">
-            Buscar
+            {c.search}
           </button>
           <button
             aria-label="Atualizar clientes"
             className="icon-button bordered"
             onClick={() => void loadClients()}
-            title="Atualizar"
+            title={c.refresh}
             type="button"
           >
             <RefreshCw size={17} />
@@ -141,15 +144,15 @@ export function ClientsView({ token }: { token: string }) {
             <span className="empty-icon">
               <Building2 size={24} />
             </span>
-            <h3>Nenhum cliente encontrado</h3>
+            <h3>{c.none}</h3>
             <p>
               {search
-                ? "Ajuste os termos da busca."
-                : "Cadastre o primeiro cliente para criar solicitacoes."}
+                ? c.adjustSearch
+                : c.emptyHint}
             </p>
             {!search && (
               <button className="secondary-button" onClick={openNewClient}>
-                Cadastrar cliente
+                {c.registerClient}
               </button>
             )}
           </div>
@@ -170,11 +173,11 @@ export function ClientsView({ token }: { token: string }) {
                 <div className="client-contact">
                   <span>
                     <Mail size={15} />
-                    {client.email || "E-mail nao informado"}
+                    {client.email || c.emailMissing}
                   </span>
                   <span>
                     <Phone size={15} />
-                    {client.phone || "Telefone nao informado"}
+                    {client.phone || c.phoneMissing}
                   </span>
                 </div>
 
@@ -184,14 +187,14 @@ export function ClientsView({ token }: { token: string }) {
                     onClick={() => openEditClient(client)}
                   >
                     <Pencil size={15} />
-                    Editar
+                    {c.edit}
                   </button>
                   <button
                     className="text-button danger-text"
                     onClick={() => void handleDelete(client)}
                   >
                     <Trash2 size={15} />
-                    Excluir
+                    {c.delete}
                   </button>
                 </footer>
               </article>
@@ -203,6 +206,7 @@ export function ClientsView({ token }: { token: string }) {
       {formOpen && (
         <ClientForm
           client={editingClient}
+          copy={c}
           token={token}
           onClose={() => {
             setFormOpen(false);
@@ -218,11 +222,13 @@ export function ClientsView({ token }: { token: string }) {
 function ClientForm({
   token,
   client,
+  copy,
   onClose,
   onSaved
 }: {
   token: string;
   client: Client | null;
+  copy: Record<keyof (typeof clientsCopy)["pt"], string>;
   onClose: () => void;
   onSaved: (client: Client) => void;
 }) {
@@ -238,12 +244,12 @@ function ClientForm({
     setError("");
 
     if (!fullName.trim()) {
-      setError("Informe o nome completo ou razao social.");
+      setError(copy.nameRequired);
       return;
     }
 
     if (!cpf.trim()) {
-      setError("Informe o CPF/CNPJ.");
+      setError(copy.taxIdRequired);
       return;
     }
 
@@ -279,9 +285,9 @@ function ClientForm({
       >
         <header className="dialog-header">
           <div>
-            <span className="eyebrow">Cliente</span>
+            <span className="eyebrow">{copy.client}</span>
             <h2 id="client-form-title">
-              {client ? "Editar cliente" : "Novo cliente"}
+              {client ? copy.editClient : copy.newClient}
             </h2>
           </div>
           <button
@@ -296,7 +302,7 @@ function ClientForm({
 
         <form className="dialog-form" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="client-name">Nome completo ou razao social</label>
+            <label htmlFor="client-name">{copy.name}</label>
             <input
               autoFocus
               id="client-name"
@@ -306,7 +312,7 @@ function ClientForm({
             />
           </div>
           <div>
-            <label htmlFor="client-cpf">CPF/CNPJ</label>
+            <label htmlFor="client-cpf">{copy.taxId}</label>
             <input
               id="client-cpf"
               maxLength={32}
@@ -315,7 +321,7 @@ function ClientForm({
             />
           </div>
           <div>
-            <label htmlFor="client-email">E-mail</label>
+            <label htmlFor="client-email">{copy.email}</label>
             <input
               id="client-email"
               onChange={(event) => setEmail(event.target.value)}
@@ -324,7 +330,7 @@ function ClientForm({
             />
           </div>
           <div>
-            <label htmlFor="client-phone">Telefone</label>
+            <label htmlFor="client-phone">{copy.phone}</label>
             <input
               id="client-phone"
               onChange={(event) => setPhone(event.target.value)}
@@ -341,10 +347,14 @@ function ClientForm({
 
           <footer className="dialog-actions">
             <button className="secondary-button" onClick={onClose} type="button">
-              Cancelar
+              {copy.cancel}
             </button>
             <button className="primary-button compact-button" disabled={saving}>
-              {saving ? "Salvando..." : client ? "Salvar alteracoes" : "Cadastrar"}
+              {saving
+                ? copy.saving
+                : client
+                  ? copy.saveChanges
+                  : copy.register}
             </button>
           </footer>
         </form>
@@ -368,3 +378,70 @@ function getErrorMessage(error: unknown) {
     ? error.message
     : "Nao foi possivel concluir a operacao.";
 }
+
+const clientsCopy = {
+  pt: {
+    deleteConfirm: "Excluir o cliente",
+    deleteHint:
+      "O cadastro será desativado, mas o histórico das solicitações será preservado.",
+    records: "Cadastros",
+    title: "Clientes",
+    subtitle: "Gerencie as pessoas e empresas que recebem solicitações.",
+    newClient: "Novo cliente",
+    searchPlaceholder: "Buscar por nome, CPF/CNPJ ou e-mail",
+    search: "Buscar",
+    refresh: "Atualizar",
+    none: "Nenhum cliente encontrado",
+    adjustSearch: "Ajuste os termos da busca.",
+    emptyHint: "Cadastre o primeiro cliente para criar solicitações.",
+    registerClient: "Cadastrar cliente",
+    emailMissing: "E-mail não informado",
+    phoneMissing: "Telefone não informado",
+    edit: "Editar",
+    delete: "Excluir",
+    nameRequired: "Informe o nome completo ou razão social.",
+    taxIdRequired: "Informe o CPF/CNPJ.",
+    client: "Cliente",
+    editClient: "Editar cliente",
+    name: "Nome completo ou razão social",
+    taxId: "CPF/CNPJ",
+    email: "E-mail",
+    phone: "Telefone",
+    cancel: "Cancelar",
+    saving: "Salvando...",
+    saveChanges: "Salvar alterações",
+    register: "Cadastrar"
+  },
+  en: {
+    deleteConfirm: "Delete client",
+    deleteHint:
+      "The record will be deactivated, while request history will be preserved.",
+    records: "Records",
+    title: "Clients",
+    subtitle: "Manage people and companies that receive requests.",
+    newClient: "New client",
+    searchPlaceholder: "Search by name, tax ID, or email",
+    search: "Search",
+    refresh: "Refresh",
+    none: "No clients found",
+    adjustSearch: "Adjust the search terms.",
+    emptyHint: "Register the first client to create requests.",
+    registerClient: "Register client",
+    emailMissing: "Email not provided",
+    phoneMissing: "Phone not provided",
+    edit: "Edit",
+    delete: "Delete",
+    nameRequired: "Enter the full name or legal company name.",
+    taxIdRequired: "Enter the tax ID.",
+    client: "Client",
+    editClient: "Edit client",
+    name: "Full name or legal company name",
+    taxId: "Tax ID",
+    email: "Email",
+    phone: "Phone",
+    cancel: "Cancel",
+    saving: "Saving...",
+    saveChanges: "Save changes",
+    register: "Register"
+  }
+};

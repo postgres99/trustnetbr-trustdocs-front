@@ -16,6 +16,10 @@ export function getDocumentReviewStatuses() {
   return apiRequest<EnumOption[]>("/enums/document-review-statuses");
 }
 
+export function getRequestStatuses() {
+  return apiRequest<EnumOption[]>("/enums/request-statuses");
+}
+
 export function getSupportedCultures() {
   return apiRequest<NamedOption[]>("/enums/supported-cultures");
 }

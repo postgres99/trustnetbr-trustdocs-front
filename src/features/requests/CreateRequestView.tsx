@@ -17,6 +17,7 @@ import {
   createRequest,
   CreatedRequest
 } from "../../services/api/requests";
+import { useI18n } from "../../i18n/I18nContext";
 
 interface CreateRequestViewProps {
   token: string;
@@ -29,6 +30,8 @@ export function CreateRequestView({
   onCancel,
   onFinished
 }: CreateRequestViewProps) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? createRequestCopy.en : createRequestCopy.pt;
   const [templates, setTemplates] = useState<RequestTemplate[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -71,17 +74,17 @@ export function CreateRequestView({
     setError("");
 
     if (!templateId) {
-      setError("Selecione um modelo de solicitacao.");
+      setError(c.selectTemplateError);
       return;
     }
 
     if (clientMode === "existing" && !clientId) {
-      setError("Selecione um cliente.");
+      setError(c.selectClientError);
       return;
     }
 
     if (clientMode === "new" && (!fullName.trim() || !cpf.trim())) {
-      setError("Informe o nome e o CPF/CNPJ do novo cliente.");
+      setError(c.newClientError);
       return;
     }
 
@@ -101,7 +104,7 @@ export function CreateRequestView({
       setError(
         requestError instanceof ApiError
           ? requestError.message
-          : "Nao foi possivel criar a solicitacao."
+          : c.createError
       );
     } finally {
       setSubmitting(false);
@@ -121,7 +124,7 @@ export function CreateRequestView({
     return (
       <div className="request-feedback create-loading">
         <LoaderCircle className="spin" size={24} />
-        <span>Preparando nova solicitacao...</span>
+        <span>{c.preparing}</span>
       </div>
     );
   }
@@ -134,30 +137,31 @@ export function CreateRequestView({
         <span className="success-icon">
           <Check size={28} />
         </span>
-        <span className="eyebrow">Solicitacao criada</span>
-        <h1>Link pronto para envio</h1>
+        <span className="eyebrow">{c.created}</span>
+        <h1>{c.linkReady}</h1>
         <p>
-          A solicitacao #{created.request.id} para {created.request.clientName} foi
-          criada com sucesso.
+          {c.createdDescription
+            .replace("{id}", String(created.request.id))
+            .replace("{client}", created.request.clientName)}
         </p>
 
         <div className="one-time-link">
           <div>
-            <strong>Copie este link agora</strong>
-            <span>Por seguranca, ele nao podera ser consultado novamente.</span>
+            <strong>{c.copyNow}</strong>
+            <span>{c.oneTimeWarning}</span>
           </div>
           <div className="copy-row">
             <input readOnly value={publicUrl} />
             <button className="secondary-button" onClick={() => void copyPublicAccess()}>
               {copied ? <Check size={17} /> : <Clipboard size={17} />}
-              {copied ? "Copiado" : "Copiar"}
+              {copied ? c.copied : c.copy}
             </button>
           </div>
         </div>
 
         <div className="success-actions">
           <button className="primary-button compact-button" onClick={onFinished}>
-            Ver solicitacoes
+            {c.viewRequests}
           </button>
         </div>
       </section>
@@ -170,11 +174,11 @@ export function CreateRequestView({
         <div>
           <button className="back-button" onClick={onCancel}>
             <ArrowLeft size={17} />
-            Voltar
+            {c.back}
           </button>
-          <span className="eyebrow">Documentos</span>
-          <h1>Nova solicitacao</h1>
-          <p>Escolha o modelo, o cliente e a validade do acesso publico.</p>
+          <span className="eyebrow">{c.documents}</span>
+          <h1>{c.title}</h1>
+          <p>{c.subtitle}</p>
         </div>
       </div>
 
@@ -183,18 +187,18 @@ export function CreateRequestView({
           <div className="form-section-heading">
             <span className="step-number">1</span>
             <div>
-              <h2>Modelo de documentos</h2>
-              <p>Define os documentos que o cliente devera enviar.</p>
+              <h2>{c.templateSection}</h2>
+              <p>{c.templateHint}</p>
             </div>
           </div>
 
-          <label htmlFor="template">Modelo</label>
+          <label htmlFor="template">{c.template}</label>
           <select
             id="template"
             onChange={(event) => setTemplateId(event.target.value)}
             value={templateId}
           >
-            <option value="">Selecione um modelo</option>
+            <option value="">{c.selectTemplate}</option>
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
                 {template.name}
@@ -214,7 +218,7 @@ export function CreateRequestView({
                     <span key={requirement.requirementId}>
                       <FileCheck2 size={15} />
                       {requirement.documentTypeName}
-                      {!requirement.isRequired && <small>Opcional</small>}
+                      {!requirement.isRequired && <small>{c.optional}</small>}
                     </span>
                   ))}
               </div>
@@ -226,8 +230,8 @@ export function CreateRequestView({
           <div className="form-section-heading">
             <span className="step-number">2</span>
             <div>
-              <h2>Cliente</h2>
-              <p>Use um cadastro existente ou crie um novo.</p>
+              <h2>{c.client}</h2>
+              <p>{c.clientHint}</p>
             </div>
           </div>
 
@@ -237,7 +241,7 @@ export function CreateRequestView({
               onClick={() => setClientMode("existing")}
               type="button"
             >
-              Cliente existente
+              {c.existingClient}
             </button>
             <button
               className={clientMode === "new" ? "active" : ""}
@@ -245,19 +249,19 @@ export function CreateRequestView({
               type="button"
             >
               <UserPlus size={16} />
-              Novo cliente
+              {c.newClient}
             </button>
           </div>
 
           {clientMode === "existing" ? (
             <>
-              <label htmlFor="client">Cliente</label>
+              <label htmlFor="client">{c.client}</label>
               <select
                 id="client"
                 onChange={(event) => setClientId(event.target.value)}
                 value={clientId}
               >
-                <option value="">Selecione um cliente</option>
+                <option value="">{c.selectClient}</option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
                     {client.fullName} - {client.cpf}
@@ -268,7 +272,7 @@ export function CreateRequestView({
           ) : (
             <div className="form-grid">
               <div className="full-field">
-                <label htmlFor="fullName">Nome completo</label>
+                <label htmlFor="fullName">{c.fullName}</label>
                 <input
                   id="fullName"
                   onChange={(event) => setFullName(event.target.value)}
@@ -276,7 +280,7 @@ export function CreateRequestView({
                 />
               </div>
               <div>
-                <label htmlFor="cpf">CPF/CNPJ</label>
+                <label htmlFor="cpf">{c.taxId}</label>
                 <input
                   id="cpf"
                   onChange={(event) => setCpf(event.target.value)}
@@ -284,7 +288,7 @@ export function CreateRequestView({
                 />
               </div>
               <div>
-                <label htmlFor="phone">Telefone</label>
+                <label htmlFor="phone">{c.phone}</label>
                 <input
                   id="phone"
                   onChange={(event) => setPhone(event.target.value)}
@@ -292,7 +296,7 @@ export function CreateRequestView({
                 />
               </div>
               <div className="full-field">
-                <label htmlFor="email">E-mail</label>
+                <label htmlFor="email">{c.email}</label>
                 <input
                   id="email"
                   onChange={(event) => setEmail(event.target.value)}
@@ -308,11 +312,11 @@ export function CreateRequestView({
           <div className="form-section-heading">
             <span className="step-number">3</span>
             <div>
-              <h2>Validade</h2>
-              <p>Opcionalmente limite ate quando o link podera ser usado.</p>
+              <h2>{c.validity}</h2>
+              <p>{c.validityHint}</p>
             </div>
           </div>
-          <label htmlFor="expiresAt">Data de expiracao</label>
+          <label htmlFor="expiresAt">{c.expirationDate}</label>
           <input
             id="expiresAt"
             min={new Date().toISOString().slice(0, 10)}
@@ -326,13 +330,94 @@ export function CreateRequestView({
 
         <div className="form-actions">
           <button className="secondary-button" onClick={onCancel} type="button">
-            Cancelar
+            {c.cancel}
           </button>
           <button className="primary-button compact-button" disabled={submitting}>
-            {submitting ? "Criando..." : "Criar solicitacao"}
+            {submitting ? c.creating : c.create}
           </button>
         </div>
       </form>
     </>
   );
 }
+
+const createRequestCopy = {
+  pt: {
+    selectTemplateError: "Selecione um modelo de solicitação.",
+    selectClientError: "Selecione um cliente.",
+    newClientError: "Informe o nome e o CPF/CNPJ do novo cliente.",
+    createError: "Não foi possível criar a solicitação.",
+    preparing: "Preparando nova solicitação...",
+    created: "Solicitação criada",
+    linkReady: "Link pronto para envio",
+    createdDescription: "A solicitação #{id} para {client} foi criada com sucesso.",
+    copyNow: "Copie este link agora",
+    oneTimeWarning: "Por segurança, ele não poderá ser consultado novamente.",
+    copied: "Copiado",
+    copy: "Copiar",
+    viewRequests: "Ver solicitações",
+    back: "Voltar",
+    documents: "Documentos",
+    title: "Nova solicitação",
+    subtitle: "Escolha o modelo, o cliente e a validade do acesso público.",
+    templateSection: "Modelo de documentos",
+    templateHint: "Define os documentos que o cliente deverá enviar.",
+    template: "Modelo",
+    selectTemplate: "Selecione um modelo",
+    optional: "Opcional",
+    client: "Cliente",
+    clientHint: "Use um cadastro existente ou crie um novo.",
+    existingClient: "Cliente existente",
+    newClient: "Novo cliente",
+    selectClient: "Selecione um cliente",
+    fullName: "Nome completo",
+    taxId: "CPF/CNPJ",
+    phone: "Telefone",
+    email: "E-mail",
+    validity: "Validade",
+    validityHint: "Opcionalmente limite até quando o link poderá ser usado.",
+    expirationDate: "Data de expiração",
+    cancel: "Cancelar",
+    creating: "Criando...",
+    create: "Criar solicitação"
+  },
+  en: {
+    selectTemplateError: "Select a request template.",
+    selectClientError: "Select a client.",
+    newClientError: "Enter the new client's name and tax ID.",
+    createError: "Could not create the request.",
+    preparing: "Preparing new request...",
+    created: "Request created",
+    linkReady: "Link ready to share",
+    createdDescription: "Request #{id} for {client} was created successfully.",
+    copyNow: "Copy this link now",
+    oneTimeWarning: "For security, it cannot be retrieved again.",
+    copied: "Copied",
+    copy: "Copy",
+    viewRequests: "View requests",
+    back: "Back",
+    documents: "Documents",
+    title: "New request",
+    subtitle: "Choose the template, client, and public access expiration.",
+    templateSection: "Document template",
+    templateHint: "Defines the documents the client must submit.",
+    template: "Template",
+    selectTemplate: "Select a template",
+    optional: "Optional",
+    client: "Client",
+    clientHint: "Use an existing client or create a new one.",
+    existingClient: "Existing client",
+    newClient: "New client",
+    selectClient: "Select a client",
+    fullName: "Full name",
+    taxId: "Tax ID",
+    phone: "Phone",
+    email: "Email",
+    validity: "Expiration",
+    validityHint: "Optionally limit how long the link can be used.",
+    expirationDate: "Expiration date",
+    cancel: "Cancel",
+    creating: "Creating...",
+    create: "Create request"
+  }
+};

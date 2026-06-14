@@ -31,19 +31,22 @@ import {
   updateRequestTemplate,
   updateTemplateRequirement
 } from "../../services/api/requestTemplates";
+import { useI18n } from "../../i18n/I18nContext";
 
 type CatalogTab = "types" | "templates";
 
 export function CatalogsView({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   const [tab, setTab] = useState<CatalogTab>("types");
 
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Estrutura documental</span>
-          <h1>Catalogos</h1>
-          <p>Defina os documentos aceitos e os modelos de solicitacao.</p>
+          <span className="eyebrow">{c.documentStructure}</span>
+          <h1>{c.title}</h1>
+          <p>{c.subtitle}</p>
         </div>
       </div>
       <div className="settings-tabs">
@@ -52,14 +55,14 @@ export function CatalogsView({ token }: { token: string }) {
           onClick={() => setTab("types")}
         >
           <FileText size={17} />
-          Tipos de documento
+          {c.documentTypes}
         </button>
         <button
           className={tab === "templates" ? "active" : ""}
           onClick={() => setTab("templates")}
         >
           <FileCheck2 size={17} />
-          Modelos
+          {c.templates}
         </button>
       </div>
       {tab === "types" ? (
@@ -72,6 +75,8 @@ export function CatalogsView({ token }: { token: string }) {
 }
 
 function DocumentTypesPanel({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   const [types, setTypes] = useState<DocumentType[]>([]);
   const [editing, setEditing] = useState<DocumentType | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -99,8 +104,8 @@ function DocumentTypesPanel({ token }: { token: string }) {
       <section className="dashboard-section requests-section">
         <div className="section-heading">
           <div>
-            <h2>Tipos de documento</h2>
-            <p>Cadastros reutilizados pelos modelos.</p>
+            <h2>{c.documentTypes}</h2>
+            <p>{c.typesDescription}</p>
           </div>
           <button
             className="primary-button compact-button"
@@ -110,7 +115,7 @@ function DocumentTypesPanel({ token }: { token: string }) {
             }}
           >
             <Plus size={17} />
-            Novo tipo
+            {c.newType}
           </button>
         </div>
         <div className="catalog-grid">
@@ -121,10 +126,10 @@ function DocumentTypesPanel({ token }: { token: string }) {
               </span>
               <div>
                 <strong>{type.name}</strong>
-                <p>{type.description || "Sem descricao"}</p>
+                <p>{type.description || c.noDescription}</p>
               </div>
               <span className={`status-badge ${type.isActive ? "success" : "danger"}`}>
-                {type.isActive ? "Ativo" : "Inativo"}
+                {type.isActive ? c.active : c.inactive}
               </span>
               <button
                 className="icon-button"
@@ -132,7 +137,7 @@ function DocumentTypesPanel({ token }: { token: string }) {
                   setEditing(type);
                   setFormOpen(true);
                 }}
-                title="Editar"
+                title={c.edit}
               >
                 <Pencil size={17} />
               </button>
@@ -163,6 +168,8 @@ function DocumentTypeForm({
   onClose: () => void;
   onSaved: (type: DocumentType) => void;
 }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   const [name, setName] = useState(type?.name ?? "");
   const [description, setDescription] = useState(type?.description ?? "");
   const [active, setActive] = useState(type?.isActive ?? true);
@@ -172,7 +179,7 @@ function DocumentTypeForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) {
-      setError("Informe o nome do tipo de documento.");
+      setError(c.typeNameRequired);
       return;
     }
     setSaving(true);
@@ -195,10 +202,10 @@ function DocumentTypeForm({
   }
 
   return (
-    <SimpleDialog title={type ? "Editar tipo" : "Novo tipo"} onClose={onClose}>
+    <SimpleDialog title={type ? c.editType : c.newType} onClose={onClose}>
       <form className="dialog-form" onSubmit={submit}>
         <div>
-          <label>Nome</label>
+          <label>{c.name}</label>
           <input
             autoFocus
             maxLength={150}
@@ -207,7 +214,7 @@ function DocumentTypeForm({
           />
         </div>
         <div>
-          <label>Descricao</label>
+          <label>{c.description}</label>
           <textarea
             onChange={(event) => setDescription(event.target.value)}
             rows={4}
@@ -220,7 +227,7 @@ function DocumentTypeForm({
             onChange={(event) => setActive(event.target.checked)}
             type="checkbox"
           />
-          Tipo ativo
+          {c.activeType}
         </label>
         {error && <div className="form-error">{error}</div>}
         <DialogActions saving={saving} onClose={onClose} />
@@ -230,6 +237,8 @@ function DocumentTypeForm({
 }
 
 function TemplatesPanel({ token }: { token: string }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   const [templates, setTemplates] = useState<RequestTemplate[]>([]);
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
   const [editing, setEditing] = useState<RequestTemplate | null>(null);
@@ -262,8 +271,8 @@ function TemplatesPanel({ token }: { token: string }) {
       <section className="dashboard-section requests-section">
         <div className="section-heading">
           <div>
-            <h2>Modelos de solicitacao</h2>
-            <p>Conjuntos ordenados de documentos enviados ao cliente.</p>
+            <h2>{c.requestTemplates}</h2>
+            <p>{c.templatesDescription}</p>
           </div>
           <button
             className="primary-button compact-button"
@@ -273,7 +282,7 @@ function TemplatesPanel({ token }: { token: string }) {
             }}
           >
             <Plus size={17} />
-            Novo modelo
+            {c.newTemplate}
           </button>
         </div>
         <div className="template-list">
@@ -285,12 +294,12 @@ function TemplatesPanel({ token }: { token: string }) {
               <div>
                 <strong>{template.name}</strong>
                 <span>
-                  {template.requirements.length} documento(s) ·{" "}
-                  {template.requirements.filter((item) => item.isRequired).length} obrigatorio(s)
+                  {template.requirements.length} {c.documents} ·{" "}
+                  {template.requirements.filter((item) => item.isRequired).length} {c.requiredPlural}
                 </span>
               </div>
               <span className={`status-badge ${template.isActive ? "success" : "danger"}`}>
-                {template.isActive ? "Ativo" : "Inativo"}
+                {template.isActive ? c.active : c.inactive}
               </span>
               <button
                 className="secondary-button compact-secondary"
@@ -299,7 +308,7 @@ function TemplatesPanel({ token }: { token: string }) {
                   setFormOpen(true);
                 }}
               >
-                Configurar
+                {c.configure}
               </button>
             </article>
           ))}
@@ -334,6 +343,8 @@ function TemplateForm({
   onClose: () => void;
   onSaved: (template: RequestTemplate) => void;
 }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   const [current, setCurrent] = useState(template);
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
@@ -357,7 +368,7 @@ function TemplateForm({
   async function saveBasics(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) {
-      setError("Informe o nome do modelo.");
+      setError(c.templateNameRequired);
       return;
     }
     setSaving(true);
@@ -418,7 +429,7 @@ function TemplateForm({
   }
 
   async function removeRequirement(requirementId: number) {
-    if (!current || !window.confirm("Remover este documento do modelo?")) return;
+    if (!current || !window.confirm(c.removeDocumentConfirm)) return;
     try {
       const updated = await removeTemplateRequirement(
         token,
@@ -469,13 +480,13 @@ function TemplateForm({
   return (
     <SimpleDialog
       wide
-      title={current ? "Configurar modelo" : "Novo modelo"}
+      title={current ? c.configureTemplate : c.newTemplate}
       onClose={onClose}
     >
       <form className="dialog-form template-form" onSubmit={saveBasics}>
         <div className="form-grid">
           <div className="full-field">
-            <label>Nome</label>
+            <label>{c.name}</label>
             <input
               autoFocus
               maxLength={150}
@@ -484,7 +495,7 @@ function TemplateForm({
             />
           </div>
           <div className="full-field">
-            <label>Descricao</label>
+            <label>{c.description}</label>
             <textarea
               onChange={(event) => setDescription(event.target.value)}
               rows={3}
@@ -498,24 +509,24 @@ function TemplateForm({
             onChange={(event) => setActive(event.target.checked)}
             type="checkbox"
           />
-          Modelo ativo
+          {c.activeTemplate}
         </label>
         <button className="secondary-button save-basics" disabled={saving}>
-          {saving ? "Salvando..." : current ? "Salvar dados do modelo" : "Criar modelo"}
+          {saving ? c.saving : current ? c.saveTemplateData : c.createTemplate}
         </button>
 
         {current && (
           <section className="requirements-editor">
             <div>
-              <h3>Documentos solicitados</h3>
-              <p>Defina obrigatoriedade e ordem de exibicao.</p>
+              <h3>{c.requestedDocuments}</h3>
+              <p>{c.requirementsDescription}</p>
             </div>
             <div className="add-requirement">
               <select
                 onChange={(event) => setNewTypeId(event.target.value)}
                 value={newTypeId}
               >
-                <option value="">Selecione um tipo</option>
+                <option value="">{c.selectType}</option>
                 {availableTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name}
@@ -528,7 +539,7 @@ function TemplateForm({
                   onChange={(event) => setNewRequired(event.target.checked)}
                   type="checkbox"
                 />
-                Obrigatorio
+                {c.required}
               </label>
               <button
                 className="secondary-button"
@@ -537,7 +548,7 @@ function TemplateForm({
                 type="button"
               >
                 <Plus size={16} />
-                Adicionar
+                {c.add}
               </button>
             </div>
             <div className="requirement-editor-list">
@@ -557,7 +568,7 @@ function TemplateForm({
                       }
                       type="checkbox"
                     />
-                    Obrigatorio
+                    {c.required}
                   </label>
                   <div className="requirement-actions">
                     <button
@@ -592,7 +603,7 @@ function TemplateForm({
         {error && <div className="form-error">{error}</div>}
         <footer className="dialog-actions">
           <button className="primary-button compact-button" onClick={onClose} type="button">
-            Concluir
+            {c.finish}
           </button>
         </footer>
       </form>
@@ -611,6 +622,8 @@ function SimpleDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
       <section
@@ -619,7 +632,7 @@ function SimpleDialog({
       >
         <header className="dialog-header">
           <div>
-            <span className="eyebrow">Catalogo</span>
+            <span className="eyebrow">{c.catalog}</span>
             <h2>{title}</h2>
           </div>
           <button className="icon-button" onClick={onClose}>
@@ -639,13 +652,15 @@ function DialogActions({
   saving: boolean;
   onClose: () => void;
 }) {
+  const { locale } = useI18n();
+  const c = locale === "en-US" ? catalogsCopy.en : catalogsCopy.pt;
   return (
     <footer className="dialog-actions">
       <button className="secondary-button" onClick={onClose} type="button">
-        Cancelar
+        {c.cancel}
       </button>
       <button className="primary-button compact-button" disabled={saving}>
-        {saving ? "Salvando..." : "Salvar"}
+        {saving ? c.saving : c.save}
       </button>
     </footer>
   );
@@ -656,3 +671,86 @@ function getMessage(error: unknown) {
     ? error.message
     : "Nao foi possivel concluir a operacao.";
 }
+
+const catalogsCopy = {
+  pt: {
+    documentStructure: "Estrutura documental",
+    title: "Catálogos",
+    subtitle: "Defina os documentos aceitos e os modelos de solicitação.",
+    documentTypes: "Tipos de documento",
+    templates: "Modelos",
+    typesDescription: "Cadastros reutilizados pelos modelos.",
+    newType: "Novo tipo",
+    noDescription: "Sem descrição",
+    active: "Ativo",
+    inactive: "Inativo",
+    edit: "Editar",
+    typeNameRequired: "Informe o nome do tipo de documento.",
+    editType: "Editar tipo",
+    name: "Nome",
+    description: "Descrição",
+    activeType: "Tipo ativo",
+    requestTemplates: "Modelos de solicitação",
+    templatesDescription: "Conjuntos ordenados de documentos enviados ao cliente.",
+    newTemplate: "Novo modelo",
+    documents: "documento(s)",
+    requiredPlural: "obrigatório(s)",
+    configure: "Configurar",
+    templateNameRequired: "Informe o nome do modelo.",
+    removeDocumentConfirm: "Remover este documento do modelo?",
+    configureTemplate: "Configurar modelo",
+    activeTemplate: "Modelo ativo",
+    saving: "Salvando...",
+    saveTemplateData: "Salvar dados do modelo",
+    createTemplate: "Criar modelo",
+    requestedDocuments: "Documentos solicitados",
+    requirementsDescription: "Defina obrigatoriedade e ordem de exibição.",
+    selectType: "Selecione um tipo",
+    required: "Obrigatório",
+    add: "Adicionar",
+    finish: "Concluir",
+    catalog: "Catálogo",
+    cancel: "Cancelar",
+    save: "Salvar"
+  },
+  en: {
+    documentStructure: "Document structure",
+    title: "Catalogs",
+    subtitle: "Define accepted documents and request templates.",
+    documentTypes: "Document types",
+    templates: "Templates",
+    typesDescription: "Reusable records used by templates.",
+    newType: "New type",
+    noDescription: "No description",
+    active: "Active",
+    inactive: "Inactive",
+    edit: "Edit",
+    typeNameRequired: "Enter the document type name.",
+    editType: "Edit type",
+    name: "Name",
+    description: "Description",
+    activeType: "Active type",
+    requestTemplates: "Request templates",
+    templatesDescription: "Ordered document sets sent to the client.",
+    newTemplate: "New template",
+    documents: "document(s)",
+    requiredPlural: "required",
+    configure: "Configure",
+    templateNameRequired: "Enter the template name.",
+    removeDocumentConfirm: "Remove this document from the template?",
+    configureTemplate: "Configure template",
+    activeTemplate: "Active template",
+    saving: "Saving...",
+    saveTemplateData: "Save template details",
+    createTemplate: "Create template",
+    requestedDocuments: "Requested documents",
+    requirementsDescription: "Define requirement and display order.",
+    selectType: "Select a type",
+    required: "Required",
+    add: "Add",
+    finish: "Finish",
+    catalog: "Catalog",
+    cancel: "Cancel",
+    save: "Save"
+  }
+};
