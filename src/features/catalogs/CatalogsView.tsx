@@ -26,6 +26,7 @@ import {
   addTemplateRequirement,
   createRequestTemplate,
   getRequestTemplates,
+  reorderTemplateRequirements,
   removeTemplateRequirement,
   RequestTemplate,
   updateRequestTemplate,
@@ -348,7 +349,7 @@ function TemplateForm({
   const [current, setCurrent] = useState(template);
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
-  const [active, setActive] = useState(template?.isActive ?? true);
+  const [active, setActive] = useState(template?.isActive ?? false);
   const [newTypeId, setNewTypeId] = useState("");
   const [newRequired, setNewRequired] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -369,6 +370,10 @@ function TemplateForm({
     event.preventDefault();
     if (!name.trim()) {
       setError(c.templateNameRequired);
+      return;
+    }
+    if (active && !current?.requirements.length) {
+      setError(c.requirementRequiredForActivation);
       return;
     }
     setSaving(true);
@@ -448,23 +453,17 @@ function TemplateForm({
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= requirements.length) return;
 
-    const moving = requirements[index];
-    const target = requirements[targetIndex];
+    const reordered = [...requirements];
+    [reordered[index], reordered[targetIndex]] = [
+      reordered[targetIndex],
+      reordered[index]
+    ];
 
     try {
-      await updateTemplateRequirement(
+      const updated = await reorderTemplateRequirements(
         token,
         current.id,
-        moving.requirementId,
-        moving.isRequired,
-        target.order
-      );
-      const updated = await updateTemplateRequirement(
-        token,
-        current.id,
-        target.requirementId,
-        target.isRequired,
-        moving.order
+        reordered.map((requirement) => requirement.requirementId)
       );
       setCurrent(updated);
       onSaved(updated);
@@ -506,7 +505,10 @@ function TemplateForm({
         <label className="toggle-field">
           <input
             checked={active}
-            onChange={(event) => setActive(event.target.checked)}
+            onChange={(event) => {
+              setActive(event.target.checked);
+              setError("");
+            }}
             type="checkbox"
           />
           {c.activeTemplate}
@@ -697,6 +699,8 @@ const catalogsCopy = {
     requiredPlural: "obrigatório(s)",
     configure: "Configurar",
     templateNameRequired: "Informe o nome do modelo.",
+    requirementRequiredForActivation:
+      "Adicione pelo menos um documento antes de ativar o modelo.",
     removeDocumentConfirm: "Remover este documento do modelo?",
     configureTemplate: "Configurar modelo",
     activeTemplate: "Modelo ativo",
@@ -737,6 +741,8 @@ const catalogsCopy = {
     requiredPlural: "required",
     configure: "Configure",
     templateNameRequired: "Enter the template name.",
+    requirementRequiredForActivation:
+      "Add at least one document before activating the template.",
     removeDocumentConfirm: "Remove this document from the template?",
     configureTemplate: "Configure template",
     activeTemplate: "Active template",

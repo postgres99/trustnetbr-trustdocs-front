@@ -56,6 +56,13 @@ import {
   useNavigate,
   useParams
 } from "react-router-dom";
+import {
+  APPLICATION_ROLES,
+  canManageSystem,
+  canManageTenantResources,
+  canManageUsers,
+  hasAnyRole
+} from "./accessControl";
 
 const TOKEN_STORAGE_KEY = "trustnetdocs.accessToken";
 
@@ -84,41 +91,37 @@ const navigation: NavigationItem[] = [
     path: "/requests",
     labelKey: "nav.requests",
     icon: FileStack,
-    roles: ["SuperAdmin", "Administrator"]
+    roles: [APPLICATION_ROLES.systemAdmin, APPLICATION_ROLES.tenantAdmin]
   },
   {
     id: "clients",
     path: "/clients",
     labelKey: "nav.clients",
     icon: Building2,
-    roles: ["SuperAdmin", "Administrator"]
+    roles: [APPLICATION_ROLES.systemAdmin, APPLICATION_ROLES.tenantAdmin]
   },
   {
     id: "catalogs",
     path: "/catalogs",
     labelKey: "nav.catalogs",
     icon: LibraryBig,
-    roles: ["SuperAdmin", "Administrator"]
+    roles: [APPLICATION_ROLES.systemAdmin, APPLICATION_ROLES.tenantAdmin]
   },
   {
     id: "users",
     path: "/users",
     labelKey: "nav.users",
     icon: Users,
-    roles: ["SuperAdmin", "Administrator"]
+    roles: [APPLICATION_ROLES.systemAdmin, APPLICATION_ROLES.tenantAdmin]
   },
   {
     id: "settings",
     path: "/settings",
     labelKey: "nav.settings",
     icon: Settings,
-    roles: ["SuperAdmin"]
+    roles: [APPLICATION_ROLES.systemAdmin]
   }
 ];
-
-function hasAnyRole(user: CurrentUser, roles?: string[]) {
-  return !roles || roles.some((role) => user.roles.includes(role));
-}
 
 export function App() {
   const { setLocale } = useI18n();
@@ -422,7 +425,7 @@ function Workspace({
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(0);
   const visibleNavigation = useMemo(
-    () => navigation.filter((item) => hasAnyRole(user, item.roles)),
+    () => navigation.filter((item) => hasAnyRole(user.roles, item.roles)),
     [user]
   );
 
@@ -534,7 +537,11 @@ function Workspace({
             </span>
             <span className="user-meta">
               <strong>{user.displayName}</strong>
-              <small>{getRoleLabel(user.roles, t)}</small>
+              <small>
+                {user.tenantName
+                  ? `${getRoleLabel(user.roles, t)} | ${user.tenantName}`
+                  : getRoleLabel(user.roles, t)}
+              </small>
             </span>
           </button>
         </header>
@@ -550,7 +557,7 @@ function Workspace({
                   onCreateRequest={() => navigate("/requests/new")}
                   onOpenRequests={() =>
                     navigate(
-                      hasAnyRole(user, ["SuperAdmin", "Administrator"])
+                      canManageTenantResources(user.roles)
                         ? "/requests"
                         : "/my-requests"
                     )
@@ -580,7 +587,7 @@ function Workspace({
               path="/my-requests/:requestId"
               element={<RequestDetailsRoute token={token} mineOnly />}
             />
-            {hasAnyRole(user, ["SuperAdmin", "Administrator"]) && (
+            {canManageTenantResources(user.roles) && (
               <>
                 <Route
                   path="/requests"
@@ -623,13 +630,13 @@ function Workspace({
                 />
               }
             />
-            {hasAnyRole(user, ["SuperAdmin", "Administrator"]) && (
+            {canManageUsers(user.roles) && (
               <>
                 <Route
                   path="/users"
                   element={<UsersView currentUser={user} token={token} />}
                 />
-                {hasAnyRole(user, ["SuperAdmin"]) && (
+                {canManageSystem(user.roles) && (
                   <Route path="/settings" element={<SettingsView token={token} />} />
                 )}
               </>
@@ -682,7 +689,7 @@ function Dashboard({
 }) {
   const { t } = useI18n();
   const [requests, setRequests] = useState<RequestSummary[]>([]);
-  const canManageRequests = hasAnyRole(user, ["SuperAdmin", "Administrator"]);
+  const canManageRequests = canManageTenantResources(user.roles);
 
   useEffect(() => {
     getRequests(token, !canManageRequests).then(setRequests).catch(() => setRequests([]));
@@ -837,8 +844,8 @@ function getRoleLabel(
   roles: string[],
   t: (key: MessageKey) => string
 ) {
-  if (roles.includes("SuperAdmin")) return t("roles.systemAdmin");
-  if (roles.includes("Administrator")) return t("roles.tenantAdmin");
+  if (roles.includes(APPLICATION_ROLES.systemAdmin)) return t("roles.systemAdmin");
+  if (roles.includes(APPLICATION_ROLES.tenantAdmin)) return t("roles.tenantAdmin");
   return t("roles.user");
 }
 

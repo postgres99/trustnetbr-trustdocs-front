@@ -20,6 +20,10 @@ import {
   uploadPublicDocument
 } from "../../services/api/publicRequests";
 import { useI18n } from "../../i18n/I18nContext";
+import {
+  DOCUMENT_FILE_ACCEPT,
+  validateDocumentFile
+} from "./documentUploadValidation";
 
 export function PublicRequestPage({ token }: { token: string }) {
   const { locale } = useI18n();
@@ -54,12 +58,18 @@ export function PublicRequestPage({ token }: { token: string }) {
     event.target.value = "";
     if (!file) return;
 
-    if (file.size > 20 * 1024 * 1024) {
+    const validation = validateDocumentFile(file);
+    if (validation === "empty") {
+      setError(c.emptyFile);
+      return;
+    }
+
+    if (validation === "too-large") {
       setError(c.maxFileSize);
       return;
     }
 
-    if (!isAllowedDocument(file)) {
+    if (validation === "invalid-format") {
       setError(c.invalidFileFormat);
       return;
     }
@@ -240,7 +250,7 @@ export function PublicRequestPage({ token }: { token: string }) {
                         )}
                         {document ? c.replace : c.selectFile}
                         <input
-                          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                          accept={DOCUMENT_FILE_ACCEPT}
                           disabled={busy}
                           onChange={(event) =>
                             void handleUpload(requirement.documentTypeId, event)
@@ -316,6 +326,7 @@ function formatBytes(value: number) {
 
 const publicCopy = {
   pt: {
+    emptyFile: "O arquivo selecionado está vazio.",
     maxFileSize: "O arquivo deve ter no máximo 20 MB.",
     removeFile: "Remover o arquivo",
     confirmSubmit: "Confirmar o envio definitivo dos documentos?",
@@ -343,6 +354,7 @@ const publicCopy = {
     submit: "Enviar documentos"
   },
   en: {
+    emptyFile: "The selected file is empty.",
     maxFileSize: "The file must be no larger than 20 MB.",
     removeFile: "Remove file",
     confirmSubmit: "Confirm the final document submission?",
@@ -369,20 +381,3 @@ const publicCopy = {
     submit: "Submit documents"
   }
 };
-
-function isAllowedDocument(file: File) {
-  const extension = file.name.split(".").pop()?.toLocaleLowerCase();
-  const allowedExtensions = ["pdf", "jpg", "jpeg", "png", "webp"];
-  const allowedTypes = [
-    "application/pdf",
-    "image/jpeg",
-    "image/png",
-    "image/webp"
-  ];
-
-  return Boolean(
-    extension &&
-      allowedExtensions.includes(extension) &&
-      allowedTypes.includes(file.type.toLocaleLowerCase())
-  );
-}

@@ -69,6 +69,7 @@ export interface RequestDetails {
   submittedAtUtc: string | null;
   documents: RequestDocument[];
   timeline?: RequestAuditEvent[];
+  publicTokenOnce?: string | null;
 }
 
 export function getRequests(token: string, mineOnly: boolean) {

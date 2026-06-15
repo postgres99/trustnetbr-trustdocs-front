@@ -1,6 +1,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 export const SESSION_EXPIRED_EVENT = "trustnetdocs:session-expired";
-let apiCulture = navigator.language || "pt-BR";
+let apiCulture =
+  typeof navigator === "undefined" ? "pt-BR" : navigator.language || "pt-BR";
 
 export interface ApiResponse<T> {
   success: boolean;

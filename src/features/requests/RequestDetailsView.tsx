@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  Clipboard,
   Download,
   Eye,
   FileText,
@@ -23,6 +24,12 @@ import {
   updateDocumentStatus
 } from "../../services/api/requests";
 import { useI18n } from "../../i18n/I18nContext";
+import {
+  DOCUMENT_REVIEW_STATUS,
+  getInitialReviewStatus,
+  MAX_REVIEW_COMMENT_LENGTH,
+  validateDocumentReview
+} from "./documentReviewRules";
 
 interface RequestDetailsViewProps {
   token: string;
@@ -44,6 +51,9 @@ export function RequestDetailsView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
+  const [resubmissionToken, setResubmissionToken] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [preview, setPreview] = useState<{
     url: string;
     contentType: string;
@@ -100,9 +110,17 @@ export function RequestDetailsView({
   ) {
     setError("");
     try {
-      setRequest(
-        await updateDocumentStatus(token, document.id, status, comment)
+      const updated = await updateDocumentStatus(
+        token,
+        document.id,
+        status,
+        comment
       );
+      setRequest(updated);
+      if (updated.publicTokenOnce) {
+        setResubmissionToken(updated.publicTokenOnce);
+        setLinkCopied(false);
+      }
     } catch (requestError) {
       setError(getErrorMessage(requestError));
       throw requestError;
@@ -141,6 +159,31 @@ export function RequestDetailsView({
     });
   }
 
+  async function handleDocumentDownload(
+    document: RequestDocument,
+    original: boolean
+  ) {
+    setDownloadLoadingId(document.id);
+    setError("");
+    try {
+      await handleDownload(token, document, original);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setDownloadLoadingId(null);
+    }
+  }
+
+  async function copyResubmissionLink() {
+    if (!resubmissionToken) return;
+
+    const publicUrl =
+      `${window.location.origin}/public/requests/${resubmissionToken}`;
+    await navigator.clipboard.writeText(publicUrl);
+    setLinkCopied(true);
+    window.setTimeout(() => setLinkCopied(false), 1800);
+  }
+
   return (
     <>
       <div className="page-heading request-detail-heading">
@@ -159,6 +202,28 @@ export function RequestDetailsView({
       </div>
 
       {error && <div className="form-error detail-error">{error}</div>}
+
+      {resubmissionToken && (
+        <section className="resubmission-link-panel">
+          <div>
+            <strong>{c.newResubmissionLink}</strong>
+            <span>{c.resubmissionLinkWarning}</span>
+          </div>
+          <div className="copy-row">
+            <input
+              readOnly
+              value={`${window.location.origin}/public/requests/${resubmissionToken}`}
+            />
+            <button
+              className="secondary-button"
+              onClick={() => void copyResubmissionLink()}
+            >
+              {linkCopied ? <CheckCircle2 size={17} /> : <Clipboard size={17} />}
+              {linkCopied ? c.copied : c.copyLink}
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="detail-summary">
         <SummaryItem label={c.client} value={request.clientName} />
@@ -196,8 +261,9 @@ export function RequestDetailsView({
                 mineOnly={mineOnly}
                 options={reviewOptions}
                 previewLoading={previewLoadingId === document.id}
+                downloadLoading={downloadLoadingId === document.id}
                 onDownload={(original) =>
-                  void handleDownload(token, document, original)
+                  void handleDocumentDownload(document, original)
                 }
                 onPreview={() => void openPreview(document)}
                 copy={c}
@@ -252,6 +318,7 @@ function DocumentReview({
   mineOnly,
   options,
   previewLoading,
+  downloadLoading,
   onDownload,
   onPreview,
   onReview,
@@ -261,6 +328,7 @@ function DocumentReview({
   mineOnly: boolean;
   options: EnumOption[];
   previewLoading: boolean;
+  downloadLoading: boolean;
   onDownload: (original: boolean) => void;
   onPreview: () => void;
   onReview: (
@@ -270,13 +338,30 @@ function DocumentReview({
   ) => Promise<void>;
   copy: Record<keyof (typeof detailsCopy)["pt"], string>;
 }) {
-  const [status, setStatus] = useState(String(document.reviewStatus));
+  const [status, setStatus] = useState(
+    String(getInitialReviewStatus(document.reviewStatus))
+  );
   const [comment, setComment] = useState(document.lastReviewerComment ?? "");
   const [saving, setSaving] = useState(false);
-  const finalized = [2, 3].includes(document.reviewStatus);
+  const [validationError, setValidationError] = useState("");
+  const finalized = [
+    DOCUMENT_REVIEW_STATUS.approved,
+    DOCUMENT_REVIEW_STATUS.rejected
+  ].includes(document.reviewStatus as 2 | 3);
 
   async function saveReview() {
+    const reviewError = validateDocumentReview(Number(status), comment);
+    if (reviewError) {
+      setValidationError({
+        "status-required": copy.statusRequired,
+        "comment-required": copy.commentRequired,
+        "comment-too-long": copy.commentTooLong
+      }[reviewError]);
+      return;
+    }
+
     setSaving(true);
+    setValidationError("");
     try {
       await onReview(document, Number(status), comment);
     } finally {
@@ -321,7 +406,11 @@ function DocumentReview({
                 ))}
             </select>
             <input
-              onChange={(event) => setComment(event.target.value)}
+              maxLength={MAX_REVIEW_COMMENT_LENGTH}
+              onChange={(event) => {
+                setComment(event.target.value);
+                setValidationError("");
+              }}
               placeholder={copy.commentPlaceholder}
               value={comment}
             />
@@ -333,6 +422,9 @@ function DocumentReview({
               <CheckCircle2 size={16} />
               {saving ? copy.saving : copy.saveReview}
             </button>
+            {validationError && (
+              <span className="review-validation-error">{validationError}</span>
+            )}
           </div>
         )}
       </div>
@@ -342,7 +434,7 @@ function DocumentReview({
           {canPreview(document.contentType) && (
             <button
               className="icon-button bordered"
-              disabled={previewLoading}
+              disabled={previewLoading || downloadLoading}
               onClick={onPreview}
               title={copy.previewWatermarked}
             >
@@ -353,10 +445,10 @@ function DocumentReview({
               )}
             </button>
           )}
-          <button className="icon-button bordered" onClick={() => onDownload(false)} title={copy.watermarkedDownload}>
-            <ShieldCheck size={17} />
+          <button className="icon-button bordered" disabled={downloadLoading} onClick={() => onDownload(false)} title={copy.watermarkedDownload}>
+            {downloadLoading ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />}
           </button>
-          <button className="icon-button bordered" onClick={() => onDownload(true)} title={copy.originalDownload}>
+          <button className="icon-button bordered" disabled={downloadLoading} onClick={() => onDownload(true)} title={copy.originalDownload}>
             <Download size={17} />
           </button>
         </div>
@@ -491,6 +583,9 @@ const detailsCopy = {
     historyHint: "Eventos registrados nesta solicitação.",
     by: "por",
     commentPlaceholder: "Comentário da análise (opcional)",
+    statusRequired: "Selecione um status de análise.",
+    commentRequired: "Informe o motivo para rejeitar ou solicitar reenvio.",
+    commentTooLong: "O comentário deve ter no máximo 1000 caracteres.",
     saving: "Salvando...",
     saveReview: "Salvar análise",
     previewWatermarked: "Visualizar cópia protegida",
@@ -499,6 +594,12 @@ const detailsCopy = {
     close: "Fechar",
     watermarkedDownload: "Baixar com marca d'água",
     originalDownload: "Baixar original"
+    ,
+    newResubmissionLink: "Novo link de reenvio",
+    resubmissionLinkWarning:
+      "Copie este link agora. O acesso anterior foi invalidado e este token não será exibido novamente.",
+    copyLink: "Copiar link",
+    copied: "Copiado"
   },
   en: {
     loading: "Loading details...",
@@ -519,6 +620,9 @@ const detailsCopy = {
     historyHint: "Events recorded for this request.",
     by: "by",
     commentPlaceholder: "Review comment (optional)",
+    statusRequired: "Select a review status.",
+    commentRequired: "Provide a reason for rejection or resubmission.",
+    commentTooLong: "The comment must be at most 1000 characters.",
     saving: "Saving...",
     saveReview: "Save review",
     previewWatermarked: "Preview protected copy",
@@ -527,5 +631,11 @@ const detailsCopy = {
     close: "Close",
     watermarkedDownload: "Download watermarked",
     originalDownload: "Download original"
+    ,
+    newResubmissionLink: "New resubmission link",
+    resubmissionLinkWarning:
+      "Copy this link now. The previous access was invalidated and this token will not be shown again.",
+    copyLink: "Copy link",
+    copied: "Copied"
   }
 };

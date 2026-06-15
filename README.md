@@ -11,6 +11,29 @@ React + TypeScript frontend for TrustNetDocs.
 
 The Vite development proxy forwards `/api` requests to the local API.
 
+## Validation
+
+- Run the automated tests with `npm test`.
+- Run the TypeScript and production bundle validation with `npm run build`.
+- The initial test suite covers dashboard request metrics, API response errors,
+  authentication headers, localization headers, session expiration events, and
+  the navigation permission matrix for all three application roles.
+- Public document validation tests cover the 20 MB boundary, empty files, all
+  supported PDF/image formats, and inconsistent extension/MIME combinations.
+- Request creation tests cover required template/client selection, clean
+  existing/new-client payloads, past expiration rejection, and local calendar
+  date handling for the browser's time zone.
+- Document review tests cover the initial status shown for new uploads,
+  mandatory comments for rejection/resubmission, and the 1000-character limit.
+- A public link remains reusable while the client is preparing the submission.
+  Final submission invalidates it; requesting resubmission creates a different
+  one-time link that the administrator must copy from the request details.
+- Direct client registration and inline request client creation share the same
+  name, tax ID, email, and phone limits; invalid email structures are rejected
+  by the API in both flows.
+- New request templates start inactive until at least one document requirement
+  is configured. Requirement arrows persist the complete order atomically.
+
 ## Application routes
 
 - `/`: dashboard.

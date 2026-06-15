@@ -36,6 +36,10 @@ import {
   UserListItem
 } from "../../services/api/users";
 import { useI18n } from "../../i18n/I18nContext";
+import {
+  APPLICATION_ROLES,
+  canManageSystem
+} from "../../app/accessControl";
 
 export function UsersView({
   token,
@@ -46,7 +50,7 @@ export function UsersView({
 }) {
   const { locale, formatDateTime } = useI18n();
   const c = locale === "en-US" ? usersCopy.en : usersCopy.pt;
-  const isSystemAdmin = currentUser.roles.includes("SuperAdmin");
+  const isSystemAdmin = canManageSystem(currentUser.roles);
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [roles, setRoles] = useState<NamedOption[]>([]);
@@ -84,7 +88,7 @@ export function UsersView({
           currentUser.tenantId
             ? [{
                 id: currentUser.tenantId,
-                name: c.currentCompany,
+                name: currentUser.tenantName ?? c.currentCompany,
                 cnpj: null,
                 slug: `tenant-${currentUser.tenantId}`,
                 isActive: true
@@ -105,14 +109,22 @@ export function UsersView({
         setRoles(
           isSystemAdmin
             ? roleData
-            : roleData.filter((role) => role.value !== "SuperAdmin")
+            : roleData.filter(
+                (role) => role.value !== APPLICATION_ROLES.systemAdmin
+              )
         );
         setCultures(cultureData);
         setTimeZones(timeZoneData);
       })
       .catch((requestError) => setError(getErrorMessage(requestError)))
       .finally(() => setLoading(false));
-  }, [c.currentCompany, currentUser.tenantId, isSystemAdmin, token]);
+  }, [
+    c.currentCompany,
+    currentUser.tenantId,
+    currentUser.tenantName,
+    isSystemAdmin,
+    token
+  ]);
 
   async function openEdit(userId: string) {
     setError("");
@@ -388,17 +400,19 @@ function UserForm({
   const [firstName, setFirstName] = useState(names.firstName);
   const [lastName, setLastName] = useState(names.lastName);
   const [cpfCnpj, setCpfCnpj] = useState(user?.cpfCnpj ?? "");
-  const actorIsSystemAdmin = currentUser.roles.includes("SuperAdmin");
+  const actorIsSystemAdmin = canManageSystem(currentUser.roles);
   const [tenantId, setTenantId] = useState(
     String(user?.tenantId ?? currentUser.tenantId ?? "")
   );
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(user?.roles ?? ["Operator"]);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(
+    user?.roles ?? [APPLICATION_ROLES.regularUser]
+  );
   const [culture, setCulture] = useState(user?.preferredCulture ?? "pt-BR");
   const [timeZone, setTimeZone] = useState(user?.timeZoneId ?? "America/Sao_Paulo");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const isSystemAdmin = selectedRoles.includes("SuperAdmin");
+  const isSystemAdmin = selectedRoles.includes(APPLICATION_ROLES.systemAdmin);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -437,8 +451,8 @@ function UserForm({
       const rolesChanged = !sameRoles(user.roles, selectedRoles);
       const promotingToSystemAdmin =
         rolesChanged &&
-        selectedRoles.includes("SuperAdmin") &&
-        !user.roles.includes("SuperAdmin");
+        selectedRoles.includes(APPLICATION_ROLES.systemAdmin) &&
+        !user.roles.includes(APPLICATION_ROLES.systemAdmin);
 
       let updated = user;
       if (promotingToSystemAdmin) {

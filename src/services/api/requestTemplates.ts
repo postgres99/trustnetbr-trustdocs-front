@@ -86,6 +86,21 @@ export function updateTemplateRequirement(
   );
 }
 
+export function reorderTemplateRequirements(
+  token: string,
+  templateId: number,
+  requirementIds: number[]
+) {
+  return apiRequest<RequestTemplate>(
+    `/request-templates/${templateId}/requirements/order`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ requirementIds })
+    },
+    token
+  );
+}
+
 export function removeTemplateRequirement(
   token: string,
   templateId: number,

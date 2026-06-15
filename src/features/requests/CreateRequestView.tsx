@@ -18,6 +18,12 @@ import {
   CreatedRequest
 } from "../../services/api/requests";
 import { useI18n } from "../../i18n/I18nContext";
+import {
+  buildCreateRequestInput,
+  ClientMode,
+  getLocalDateInputValue,
+  validateCreateRequestForm
+} from "./createRequestForm";
 
 interface CreateRequestViewProps {
   token: string;
@@ -35,7 +41,7 @@ export function CreateRequestView({
   const [templates, setTemplates] = useState<RequestTemplate[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [templateId, setTemplateId] = useState("");
-  const [clientMode, setClientMode] = useState<"existing" | "new">("existing");
+  const [clientMode, setClientMode] = useState<ClientMode>("existing");
   const [clientId, setClientId] = useState("");
   const [fullName, setFullName] = useState("");
   const [cpf, setCpf] = useState("");
@@ -73,32 +79,30 @@ export function CreateRequestView({
     event.preventDefault();
     setError("");
 
-    if (!templateId) {
-      setError(c.selectTemplateError);
-      return;
-    }
-
-    if (clientMode === "existing" && !clientId) {
-      setError(c.selectClientError);
-      return;
-    }
-
-    if (clientMode === "new" && (!fullName.trim() || !cpf.trim())) {
-      setError(c.newClientError);
+    const values = {
+      templateId,
+      clientMode,
+      clientId,
+      fullName,
+      cpf,
+      email,
+      phone,
+      expiresAt
+    };
+    const validationError = validateCreateRequestForm(values);
+    if (validationError) {
+      setError({
+        "template-required": c.selectTemplateError,
+        "client-required": c.selectClientError,
+        "new-client-required": c.newClientError,
+        "expiration-in-past": c.expirationError
+      }[validationError]);
       return;
     }
 
     setSubmitting(true);
     try {
-      const result = await createRequest(token, {
-        requestTemplateId: Number(templateId),
-        externalClientId: clientMode === "existing" ? Number(clientId) : null,
-        clientFullName: clientMode === "new" ? fullName.trim() : null,
-        clientCpf: clientMode === "new" ? cpf.trim() : null,
-        clientEmail: clientMode === "new" && email.trim() ? email.trim() : null,
-        clientPhone: clientMode === "new" && phone.trim() ? phone.trim() : null,
-        expiresAtUtc: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null
-      });
+      const result = await createRequest(token, buildCreateRequestInput(values));
       setCreated(result);
     } catch (requestError) {
       setError(
@@ -275,6 +279,7 @@ export function CreateRequestView({
                 <label htmlFor="fullName">{c.fullName}</label>
                 <input
                   id="fullName"
+                  maxLength={200}
                   onChange={(event) => setFullName(event.target.value)}
                   value={fullName}
                 />
@@ -283,6 +288,7 @@ export function CreateRequestView({
                 <label htmlFor="cpf">{c.taxId}</label>
                 <input
                   id="cpf"
+                  maxLength={32}
                   onChange={(event) => setCpf(event.target.value)}
                   value={cpf}
                 />
@@ -291,6 +297,7 @@ export function CreateRequestView({
                 <label htmlFor="phone">{c.phone}</label>
                 <input
                   id="phone"
+                  maxLength={50}
                   onChange={(event) => setPhone(event.target.value)}
                   value={phone}
                 />
@@ -299,6 +306,7 @@ export function CreateRequestView({
                 <label htmlFor="email">{c.email}</label>
                 <input
                   id="email"
+                  maxLength={200}
                   onChange={(event) => setEmail(event.target.value)}
                   type="email"
                   value={email}
@@ -319,7 +327,7 @@ export function CreateRequestView({
           <label htmlFor="expiresAt">{c.expirationDate}</label>
           <input
             id="expiresAt"
-            min={new Date().toISOString().slice(0, 10)}
+            min={getLocalDateInputValue()}
             onChange={(event) => setExpiresAt(event.target.value)}
             type="date"
             value={expiresAt}
@@ -346,6 +354,7 @@ const createRequestCopy = {
     selectTemplateError: "Selecione um modelo de solicitação.",
     selectClientError: "Selecione um cliente.",
     newClientError: "Informe o nome e o CPF/CNPJ do novo cliente.",
+    expirationError: "A data de expiração não pode estar no passado.",
     createError: "Não foi possível criar a solicitação.",
     preparing: "Preparando nova solicitação...",
     created: "Solicitação criada",
@@ -385,6 +394,7 @@ const createRequestCopy = {
     selectTemplateError: "Select a request template.",
     selectClientError: "Select a client.",
     newClientError: "Enter the new client's name and tax ID.",
+    expirationError: "The expiration date cannot be in the past.",
     createError: "Could not create the request.",
     preparing: "Preparing new request...",
     created: "Request created",

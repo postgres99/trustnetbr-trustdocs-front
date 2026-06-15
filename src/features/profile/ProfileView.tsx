@@ -26,6 +26,7 @@ import {
   MessageKey,
   useI18n
 } from "../../i18n/I18nContext";
+import { APPLICATION_ROLES } from "../../app/accessControl";
 
 interface ProfileViewProps {
   token: string;
@@ -358,8 +359,8 @@ function getRoleLabel(
   roles: string[],
   t: (key: MessageKey) => string
 ) {
-  if (roles.includes("SuperAdmin")) return t("roles.systemAdmin");
-  if (roles.includes("Administrator")) return t("roles.tenantAdmin");
+  if (roles.includes(APPLICATION_ROLES.systemAdmin)) return t("roles.systemAdmin");
+  if (roles.includes(APPLICATION_ROLES.tenantAdmin)) return t("roles.tenantAdmin");
   return t("roles.user");
 }
 

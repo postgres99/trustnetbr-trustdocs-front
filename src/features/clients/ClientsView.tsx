@@ -324,6 +324,7 @@ function ClientForm({
             <label htmlFor="client-email">{copy.email}</label>
             <input
               id="client-email"
+              maxLength={200}
               onChange={(event) => setEmail(event.target.value)}
               type="email"
               value={email}
@@ -333,6 +334,7 @@ function ClientForm({
             <label htmlFor="client-phone">{copy.phone}</label>
             <input
               id="client-phone"
+              maxLength={50}
               onChange={(event) => setPhone(event.target.value)}
               value={phone}
             />
