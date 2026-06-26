@@ -40,6 +40,11 @@ import {
   APPLICATION_ROLES,
   canManageSystem
 } from "../../app/accessControl";
+import {
+  formatCpfOrCnpj,
+  isEmptyOrValidCpfOrCnpj,
+  normalizeBrazilianTaxId
+} from "../../utils/brazilianTaxId";
 
 export function UsersView({
   token,
@@ -411,6 +416,7 @@ function UserForm({
   const [timeZone, setTimeZone] = useState(user?.timeZoneId ?? "America/Sao_Paulo");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const taxIdError = cpfCnpj.trim() && !isEmptyOrValidCpfOrCnpj(cpfCnpj) ? copy.taxIdInvalid : "";
 
   const isSystemAdmin = selectedRoles.includes(APPLICATION_ROLES.systemAdmin);
 
@@ -430,6 +436,10 @@ function UserForm({
       setError(copy.selectCompany);
       return;
     }
+    if (!isEmptyOrValidCpfOrCnpj(cpfCnpj)) {
+      setError(copy.taxIdInvalid);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -438,7 +448,7 @@ function UserForm({
           email: email.trim(),
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          cpfCnpj: cpfCnpj.trim() || null,
+          cpfCnpj: cpfCnpj.trim() ? normalizeBrazilianTaxId(cpfCnpj) : null,
           tenantId: tenantId ? Number(tenantId) : null,
           roles: selectedRoles,
           timeZoneId: timeZone,
@@ -463,7 +473,7 @@ function UserForm({
         email: email.trim(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        cpfCnpj: cpfCnpj.trim() || null,
+        cpfCnpj: cpfCnpj.trim() ? normalizeBrazilianTaxId(cpfCnpj) : null,
         tenantId: tenantId ? Number(tenantId) : null
       });
 
@@ -545,9 +555,18 @@ function UserForm({
             <div className="full-field">
               <label>{copy.taxId}</label>
               <input
-                onChange={(event) => setCpfCnpj(event.target.value)}
+                aria-invalid={Boolean(taxIdError)}
+                aria-describedby={taxIdError ? "user-tax-id-error" : undefined}
+                inputMode="numeric"
+                maxLength={18}
+                onChange={(event) => setCpfCnpj(formatCpfOrCnpj(event.target.value))}
                 value={cpfCnpj}
               />
+              {taxIdError && (
+                <small className="field-error" id="user-tax-id-error">
+                  {taxIdError}
+                </small>
+              )}
             </div>
           </div>
 
@@ -819,6 +838,7 @@ const usersCopy = {
     auditHistory: "Histórico de auditoria",
     cannotDeactivateSelf: "Você não pode desativar seu próprio usuário",
     requiredIdentity: "Informe e-mail, nome e sobrenome.",
+    taxIdInvalid: "Informe um CPF ou CNPJ válido.",
     selectRole: "Selecione pelo menos um perfil.",
     selectCompany: "Selecione uma empresa para administradores e usuários regulares.",
     administration: "Administração",
@@ -870,6 +890,7 @@ const usersCopy = {
     auditHistory: "Audit history",
     cannotDeactivateSelf: "You cannot deactivate your own user",
     requiredIdentity: "Enter email, first name, and last name.",
+    taxIdInvalid: "Enter a valid CPF or CNPJ.",
     selectRole: "Select at least one role.",
     selectCompany: "Select a company for administrators and regular users.",
     administration: "Administration",

@@ -24,6 +24,11 @@ import {
   updateTenant
 } from "../../services/api/tenants";
 import { useI18n } from "../../i18n/I18nContext";
+import {
+  formatCnpj,
+  isEmptyOrValidCnpj,
+  normalizeBrazilianTaxId
+} from "../../utils/brazilianTaxId";
 
 type SettingsTab = "companies" | "email";
 
@@ -239,6 +244,7 @@ function TenantForm({
   const [isActive, setIsActive] = useState(tenant?.isActive ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const cnpjError = cnpj.trim() && !isEmptyOrValidCnpj(cnpj) ? c.companyTaxIdInvalid : "";
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -247,9 +253,14 @@ function TenantForm({
       return;
     }
 
+    if (!isEmptyOrValidCnpj(cnpj)) {
+      setError(c.companyTaxIdInvalid);
+      return;
+    }
+
     const input: TenantInput = {
       name: name.trim(),
-      cnpj: cnpj.trim() || null,
+      cnpj: cnpj.trim() ? normalizeBrazilianTaxId(cnpj) : null,
       slug: slug.trim(),
       isActive
     };
@@ -296,10 +307,18 @@ function TenantForm({
           <div>
             <label>CNPJ</label>
             <input
-              maxLength={32}
-              onChange={(event) => setCnpj(event.target.value)}
+              aria-invalid={Boolean(cnpjError)}
+              aria-describedby={cnpjError ? "tenant-cnpj-error" : undefined}
+              inputMode="numeric"
+              maxLength={18}
+              onChange={(event) => setCnpj(formatCnpj(event.target.value))}
               value={cnpj}
             />
+            {cnpjError && (
+              <small className="field-error" id="tenant-cnpj-error">
+                {cnpjError}
+              </small>
+            )}
           </div>
           <div>
             <label>Slug</label>
@@ -567,6 +586,7 @@ const settingsCopy = {
     inactiveFemale: "Inativa",
     edit: "Editar",
     companyRequired: "Informe o nome e o slug da empresa.",
+    companyTaxIdInvalid: "Informe um CNPJ válido.",
     company: "Empresa",
     editCompany: "Editar empresa",
     name: "Nome",
@@ -610,6 +630,7 @@ const settingsCopy = {
     inactiveFemale: "Inactive",
     edit: "Edit",
     companyRequired: "Enter the company name and slug.",
+    companyTaxIdInvalid: "Enter a valid CNPJ.",
     company: "Company",
     editCompany: "Edit company",
     name: "Name",

@@ -24,6 +24,10 @@ import {
   getLocalDateInputValue,
   validateCreateRequestForm
 } from "./createRequestForm";
+import {
+  formatCpfOrCnpj,
+  isValidCpfOrCnpj
+} from "../../utils/brazilianTaxId";
 
 interface CreateRequestViewProps {
   token: string;
@@ -74,6 +78,10 @@ export function CreateRequestView({
     () => templates.find((template) => template.id === Number(templateId)),
     [templateId, templates]
   );
+  const taxIdError =
+    clientMode === "new" && cpf.trim() && !isValidCpfOrCnpj(cpf)
+      ? c.newClientTaxIdInvalid
+      : "";
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -95,6 +103,7 @@ export function CreateRequestView({
         "template-required": c.selectTemplateError,
         "client-required": c.selectClientError,
         "new-client-required": c.newClientError,
+        "new-client-tax-id-invalid": c.newClientTaxIdInvalid,
         "expiration-in-past": c.expirationError
       }[validationError]);
       return;
@@ -287,11 +296,19 @@ export function CreateRequestView({
               <div>
                 <label htmlFor="cpf">{c.taxId}</label>
                 <input
+                  aria-invalid={Boolean(taxIdError)}
+                  aria-describedby={taxIdError ? "request-cpf-error" : undefined}
                   id="cpf"
-                  maxLength={32}
-                  onChange={(event) => setCpf(event.target.value)}
+                  inputMode="numeric"
+                  maxLength={18}
+                  onChange={(event) => setCpf(formatCpfOrCnpj(event.target.value))}
                   value={cpf}
                 />
+                {taxIdError && (
+                  <small className="field-error" id="request-cpf-error">
+                    {taxIdError}
+                  </small>
+                )}
               </div>
               <div>
                 <label htmlFor="phone">{c.phone}</label>
@@ -354,6 +371,7 @@ const createRequestCopy = {
     selectTemplateError: "Selecione um modelo de solicitação.",
     selectClientError: "Selecione um cliente.",
     newClientError: "Informe o nome e o CPF/CNPJ do novo cliente.",
+    newClientTaxIdInvalid: "Informe um CPF ou CNPJ válido para o novo cliente.",
     expirationError: "A data de expiração não pode estar no passado.",
     createError: "Não foi possível criar a solicitação.",
     preparing: "Preparando nova solicitação...",
@@ -394,6 +412,7 @@ const createRequestCopy = {
     selectTemplateError: "Select a request template.",
     selectClientError: "Select a client.",
     newClientError: "Enter the new client's name and tax ID.",
+    newClientTaxIdInvalid: "Enter a valid CPF or CNPJ for the new client.",
     expirationError: "The expiration date cannot be in the past.",
     createError: "Could not create the request.",
     preparing: "Preparing new request...",

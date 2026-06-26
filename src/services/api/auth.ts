@@ -11,7 +11,17 @@ export interface AuthenticatedUser {
 }
 
 export interface LoginResult {
+  requiresFirstAccess: boolean;
+  firstAccessChallengeId: string | null;
+  firstAccessExpiresAtUtc: string | null;
+  firstAccessToken: string | null;
   requiresTwoFactor: boolean;
+  twoFactorChallengeId: string | null;
+  twoFactorExpiresAtUtc: string | null;
+  twoFactorDeliveryTarget: string | null;
+  requiresTwoFactorSetup: boolean;
+  twoFactorSetupKey: string | null;
+  twoFactorSetupUri: string | null;
   tokenType: string;
   accessToken: string | null;
   expiresAtUtc: string | null;
@@ -36,6 +46,33 @@ export function login(loginValue: string, password: string) {
     body: JSON.stringify({
       login: loginValue,
       password
+    })
+  });
+}
+
+export function verifyTwoFactor(challengeId: string, code: string) {
+  return apiRequest<LoginResult>("/auth/two-factor/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      challengeId,
+      code
+    })
+  });
+}
+
+export function completeFirstAccess(
+  challengeId: string,
+  token: string,
+  newPassword: string,
+  confirmNewPassword: string
+) {
+  return apiRequest<LoginResult>("/auth/first-access/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      challengeId,
+      token,
+      newPassword,
+      confirmNewPassword
     })
   });
 }

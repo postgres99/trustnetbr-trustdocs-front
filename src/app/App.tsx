@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import {
   Building2,
   CheckCircle2,
@@ -20,11 +21,13 @@ import {
 } from "lucide-react";
 import {
   CurrentUser,
+  completeFirstAccess,
   getCurrentUserAvatar,
   getCurrentUser,
   getHealth,
   HealthStatus,
-  login
+  login,
+  verifyTwoFactor
 } from "../services/api/auth";
 import {
   ApiError,
@@ -235,7 +238,7 @@ function LoginScreen({
   sessionExpired: boolean;
   onAuthenticated: (token: string, user: CurrentUser) => void;
 }) {
-  const { t } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   const [loginValue, setLoginValue] = useState(
     import.meta.env.DEV ? import.meta.env.VITE_DEV_LOGIN ?? "" : ""
   );
@@ -246,6 +249,49 @@ function LoginScreen({
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [twoFactorQrCode, setTwoFactorQrCode] = useState("");
+  const [manualSetupOpen, setManualSetupOpen] = useState(false);
+  const [firstAccessPassword, setFirstAccessPassword] = useState("");
+  const [firstAccessConfirmPassword, setFirstAccessConfirmPassword] = useState("");
+  const [firstAccessChallenge, setFirstAccessChallenge] = useState<{
+    id: string;
+    token: string;
+    expiresAtUtc: string | null;
+  } | null>(null);
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState<{
+    id: string;
+    deliveryTarget: string | null;
+    expiresAtUtc: string | null;
+    setupRequired: boolean;
+    setupKey: string | null;
+    setupUri: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!twoFactorChallenge?.setupRequired || !twoFactorChallenge.setupUri) {
+      setTwoFactorQrCode("");
+      return;
+    }
+
+    QRCode.toDataURL(twoFactorChallenge.setupUri, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      scale: 7
+    })
+      .then((dataUrl) => {
+        if (active) setTwoFactorQrCode(dataUrl);
+      })
+      .catch(() => {
+        if (active) setTwoFactorQrCode("");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [twoFactorChallenge?.setupRequired, twoFactorChallenge?.setupUri]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -253,14 +299,18 @@ function LoginScreen({
     setError("");
 
     try {
-      const result = await login(loginValue, password);
-      if (result.requiresTwoFactor || !result.accessToken) {
-        setError(t("auth.twoFactor"));
-        return;
-      }
+      const result = firstAccessChallenge
+        ? await completeFirstAccess(
+            firstAccessChallenge.id,
+            firstAccessChallenge.token,
+            firstAccessPassword,
+            firstAccessConfirmPassword
+          )
+        : twoFactorChallenge
+          ? await verifyTwoFactor(twoFactorChallenge.id, twoFactorCode)
+          : await login(loginValue, password);
 
-      const currentUser = await getCurrentUser(result.accessToken);
-      onAuthenticated(result.accessToken, currentUser);
+      await handleLoginResult(result);
     } catch (requestError) {
       setError(
         requestError instanceof ApiError
@@ -270,6 +320,56 @@ function LoginScreen({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleLoginResult(result: Awaited<ReturnType<typeof login>>) {
+    if (result.requiresFirstAccess && result.firstAccessChallengeId && result.firstAccessToken) {
+      setFirstAccessChallenge({
+        id: result.firstAccessChallengeId,
+        token: result.firstAccessToken,
+        expiresAtUtc: result.firstAccessExpiresAtUtc
+      });
+      setFirstAccessPassword("");
+      setFirstAccessConfirmPassword("");
+      setTwoFactorChallenge(null);
+      setError("");
+      return;
+    }
+
+    if (result.requiresTwoFactor || !result.accessToken) {
+      if (result.twoFactorChallengeId) {
+        setTwoFactorChallenge({
+          id: result.twoFactorChallengeId,
+          deliveryTarget: result.twoFactorDeliveryTarget,
+          expiresAtUtc: result.twoFactorExpiresAtUtc,
+          setupRequired: result.requiresTwoFactorSetup,
+          setupKey: result.twoFactorSetupKey,
+          setupUri: result.twoFactorSetupUri
+        });
+        setTwoFactorCode("");
+        setManualSetupOpen(false);
+        setFirstAccessChallenge(null);
+        setError("");
+        return;
+      }
+
+      setError(t("auth.twoFactorUnavailable"));
+      return;
+    }
+
+    const currentUser = await getCurrentUser(result.accessToken);
+    onAuthenticated(result.accessToken, currentUser);
+  }
+
+  function resetTwoFactor() {
+    setTwoFactorChallenge(null);
+    setFirstAccessChallenge(null);
+    setTwoFactorCode("");
+    setTwoFactorQrCode("");
+    setManualSetupOpen(false);
+    setFirstAccessPassword("");
+    setFirstAccessConfirmPassword("");
+    setError("");
   }
 
   return (
@@ -297,70 +397,195 @@ function LoginScreen({
             <span>TrustNetDocs</span>
           </div>
 
+          <div className="login-language-row">
+            <label htmlFor="login-language">{t("auth.languageLabel")}</label>
+            <select
+              id="login-language"
+              aria-label={t("auth.languageLabel")}
+              value={locale}
+              onChange={(event) => setLocale(event.target.value)}
+            >
+              <option value="pt-BR">Português (Brasil)</option>
+              <option value="en-US">English (US)</option>
+            </select>
+          </div>
+
           <div className="form-heading">
-            <h2>{t("auth.title")}</h2>
-            <p>{t("auth.subtitle")}</p>
+            <h2>
+              {firstAccessChallenge
+                ? t("auth.firstAccessTitle")
+                : twoFactorChallenge
+                  ? t("auth.twoFactorTitle")
+                  : t("auth.title")}
+            </h2>
+            <p>
+              {firstAccessChallenge
+                ? t("auth.firstAccessSubtitle")
+                : twoFactorChallenge
+                ? twoFactorChallenge.setupRequired
+                  ? t("auth.twoFactorSetupSubtitle")
+                  : t("auth.twoFactorSubtitle", {
+                      target: twoFactorChallenge.deliveryTarget ?? t("common.notProvided")
+                    })
+                : t("auth.subtitle")}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit}>
             {sessionExpired && (
               <div className="session-feedback">{t("auth.sessionExpired")}</div>
             )}
-            <label htmlFor="login">{t("auth.email")}</label>
-            <input
-              id="login"
-              autoComplete="username"
-              required
-              value={loginValue}
-              onChange={(event) => setLoginValue(event.target.value)}
-              placeholder={t("auth.emailPlaceholder")}
-            />
+            {!twoFactorChallenge && !firstAccessChallenge && (
+              <>
+                <label htmlFor="login">{t("auth.email")}</label>
+                <input
+                  id="login"
+                  autoComplete="username"
+                  required
+                  value={loginValue}
+                  onChange={(event) => setLoginValue(event.target.value)}
+                  placeholder={t("auth.emailPlaceholder")}
+                />
 
-            <div className="label-row">
-              <label htmlFor="password">{t("auth.password")}</label>
-              <button
-                className="text-button"
-                onClick={() => setRecoveryOpen(true)}
-                type="button"
-              >
-                {t("auth.forgot")}
-              </button>
-            </div>
-            <div className="password-input">
-              <input
-                id="password"
-                type={passwordVisible ? "text" : "password"}
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder={t("auth.passwordPlaceholder")}
-              />
-              <button
-                aria-label={
-                  passwordVisible
-                    ? t("auth.hidePassword")
-                    : t("auth.showPassword")
-                }
-                className="password-visibility"
-                onClick={() => setPasswordVisible((current) => !current)}
-                title={
-                  passwordVisible
-                    ? t("auth.hidePassword")
-                    : t("auth.showPassword")
-                }
-                type="button"
-              >
-                {passwordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
+                <div className="label-row">
+                  <label htmlFor="password">{t("auth.password")}</label>
+                  <button
+                    className="text-button"
+                    onClick={() => setRecoveryOpen(true)}
+                    type="button"
+                  >
+                    {t("auth.forgot")}
+                  </button>
+                </div>
+                <div className="password-input">
+                  <input
+                    id="password"
+                    type={passwordVisible ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={t("auth.passwordPlaceholder")}
+                  />
+                  <button
+                    aria-label={
+                      passwordVisible
+                        ? t("auth.hidePassword")
+                        : t("auth.showPassword")
+                    }
+                    className="password-visibility"
+                    onClick={() => setPasswordVisible((current) => !current)}
+                    title={
+                      passwordVisible
+                        ? t("auth.hidePassword")
+                        : t("auth.showPassword")
+                    }
+                    type="button"
+                  >
+                    {passwordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {firstAccessChallenge && (
+              <>
+                <label htmlFor="first-access-password">{t("auth.newPassword")}</label>
+                <input
+                  id="first-access-password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  type="password"
+                  value={firstAccessPassword}
+                  onChange={(event) => setFirstAccessPassword(event.target.value)}
+                  placeholder={t("auth.newPasswordPlaceholder")}
+                />
+                <label htmlFor="first-access-confirm-password">
+                  {t("auth.confirmNewPassword")}
+                </label>
+                <input
+                  id="first-access-confirm-password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  type="password"
+                  value={firstAccessConfirmPassword}
+                  onChange={(event) => setFirstAccessConfirmPassword(event.target.value)}
+                  placeholder={t("auth.confirmNewPasswordPlaceholder")}
+                />
+              </>
+            )}
+
+            {twoFactorChallenge && (
+              <>
+                {twoFactorChallenge.setupRequired && (
+                  <div className="session-feedback two-factor-setup-box">
+                    <strong>{t("auth.twoFactorSetupInstructions")}</strong>
+                    <span>{t("auth.twoFactorSetupApps")}</span>
+                    {twoFactorQrCode && (
+                      <div className="two-factor-qr-frame">
+                        <img
+                          alt={t("auth.twoFactorQrAlt")}
+                          src={twoFactorQrCode}
+                        />
+                      </div>
+                    )}
+                    {twoFactorChallenge.setupKey && (
+                      <>
+                        <button
+                          className="text-button two-factor-manual-toggle"
+                          type="button"
+                          onClick={() => setManualSetupOpen((current) => !current)}
+                        >
+                          {manualSetupOpen
+                            ? t("auth.twoFactorHideManual")
+                            : t("auth.twoFactorShowManual")}
+                        </button>
+                        {manualSetupOpen && (
+                          <div className="two-factor-manual-key">
+                            <span>{t("auth.twoFactorManualKey")}</span>
+                            <code>{twoFactorChallenge.setupKey}</code>
+                            {twoFactorChallenge.setupUri && (
+                              <small>{t("auth.twoFactorSetupUriHint")}</small>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                <label htmlFor="two-factor-code">{t("auth.twoFactorCode")}</label>
+                <input
+                  id="two-factor-code"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={10}
+                  required
+                  value={twoFactorCode}
+                  onChange={(event) => setTwoFactorCode(event.target.value)}
+                  placeholder={t("auth.twoFactorCodePlaceholder")}
+                />
+              </>
+            )}
 
             {error && <div className="form-error">{error}</div>}
 
             <button className="primary-button" disabled={submitting} type="submit">
-              {submitting ? t("auth.loggingIn") : t("auth.login")}
+              {submitting
+                ? t("auth.loggingIn")
+                : firstAccessChallenge
+                  ? t("auth.completeFirstAccess")
+                  : twoFactorChallenge
+                  ? t("auth.verifyCode")
+                  : t("auth.login")}
               {!submitting && <ChevronRight size={18} />}
             </button>
+            {(twoFactorChallenge || firstAccessChallenge) && (
+              <button className="text-button full-width-text-button" type="button" onClick={resetTwoFactor}>
+                {t("auth.backToLogin")}
+              </button>
+            )}
           </form>
 
           <div className={`api-status ${health ? "online" : "offline"}`}>

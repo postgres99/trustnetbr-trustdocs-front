@@ -1,4 +1,8 @@
 import { CreateRequestInput } from "../../services/api/requests";
+import {
+  isValidCpfOrCnpj,
+  normalizeBrazilianTaxId
+} from "../../utils/brazilianTaxId";
 
 export type ClientMode = "existing" | "new";
 
@@ -17,6 +21,7 @@ export type CreateRequestValidationError =
   | "template-required"
   | "client-required"
   | "new-client-required"
+  | "new-client-tax-id-invalid"
   | "expiration-in-past";
 
 export function validateCreateRequestForm(
@@ -38,6 +43,10 @@ export function validateCreateRequestForm(
     return "new-client-required";
   }
 
+  if (values.clientMode === "new" && !isValidCpfOrCnpj(values.cpf)) {
+    return "new-client-tax-id-invalid";
+  }
+
   if (values.expiresAt && values.expiresAt < today) {
     return "expiration-in-past";
   }
@@ -54,7 +63,7 @@ export function buildCreateRequestInput(
     requestTemplateId: Number(values.templateId),
     externalClientId: isExistingClient ? Number(values.clientId) : null,
     clientFullName: isExistingClient ? null : values.fullName.trim(),
-    clientCpf: isExistingClient ? null : values.cpf.trim(),
+    clientCpf: isExistingClient ? null : normalizeBrazilianTaxId(values.cpf),
     clientEmail:
       !isExistingClient && values.email.trim() ? values.email.trim() : null,
     clientPhone:

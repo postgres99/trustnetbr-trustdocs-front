@@ -45,6 +45,18 @@ describe("create request form", () => {
     ).toBe("expiration-in-past");
   });
 
+  it("rejects invalid new-client CPF or CNPJ", () => {
+    expect(
+      validateCreateRequestForm({
+        ...validExisting,
+        clientMode: "new",
+        clientId: "",
+        fullName: "Maria Silva",
+        cpf: "123"
+      })
+    ).toBe("new-client-tax-id-invalid");
+  });
+
   it("builds a payload for an existing client without new-client data", () => {
     expect(
       buildCreateRequestInput({
@@ -70,7 +82,7 @@ describe("create request form", () => {
       clientMode: "new",
       clientId: "20",
       fullName: "  Maria Silva  ",
-      cpf: "  12345678900 ",
+      cpf: "  529.982.247-25 ",
       email: " maria@example.com ",
       phone: " 11999999999 "
     });
@@ -79,7 +91,7 @@ describe("create request form", () => {
       requestTemplateId: 10,
       externalClientId: null,
       clientFullName: "Maria Silva",
-      clientCpf: "12345678900",
+      clientCpf: "52998224725",
       clientEmail: "maria@example.com",
       clientPhone: "11999999999"
     });

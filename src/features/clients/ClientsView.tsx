@@ -21,6 +21,11 @@ import {
 } from "../../services/api/clients";
 import { ApiError } from "../../services/api/client";
 import { useI18n } from "../../i18n/I18nContext";
+import {
+  formatCpfOrCnpj,
+  isValidCpfOrCnpj,
+  normalizeBrazilianTaxId
+} from "../../utils/brazilianTaxId";
 
 export function ClientsView({ token }: { token: string }) {
   const { locale } = useI18n();
@@ -238,6 +243,7 @@ function ClientForm({
   const [phone, setPhone] = useState(client?.phone ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const taxIdError = cpf.trim() && !isValidCpfOrCnpj(cpf) ? copy.taxIdInvalid : "";
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -253,9 +259,14 @@ function ClientForm({
       return;
     }
 
+    if (!isValidCpfOrCnpj(cpf)) {
+      setError(copy.taxIdInvalid);
+      return;
+    }
+
     const input: ClientInput = {
       fullName: fullName.trim(),
-      cpf: cpf.trim(),
+      cpf: normalizeBrazilianTaxId(cpf),
       email: email.trim() || null,
       phone: phone.trim() || null
     };
@@ -314,11 +325,19 @@ function ClientForm({
           <div>
             <label htmlFor="client-cpf">{copy.taxId}</label>
             <input
+              aria-invalid={Boolean(taxIdError)}
+              aria-describedby={taxIdError ? "client-cpf-error" : undefined}
               id="client-cpf"
-              maxLength={32}
-              onChange={(event) => setCpf(event.target.value)}
+              inputMode="numeric"
+              maxLength={18}
+              onChange={(event) => setCpf(formatCpfOrCnpj(event.target.value))}
               value={cpf}
             />
+            {taxIdError && (
+              <small className="field-error" id="client-cpf-error">
+                {taxIdError}
+              </small>
+            )}
           </div>
           <div>
             <label htmlFor="client-email">{copy.email}</label>
@@ -403,6 +422,7 @@ const clientsCopy = {
     delete: "Excluir",
     nameRequired: "Informe o nome completo ou razão social.",
     taxIdRequired: "Informe o CPF/CNPJ.",
+    taxIdInvalid: "Informe um CPF ou CNPJ válido.",
     client: "Cliente",
     editClient: "Editar cliente",
     name: "Nome completo ou razão social",
@@ -435,6 +455,7 @@ const clientsCopy = {
     delete: "Delete",
     nameRequired: "Enter the full name or legal company name.",
     taxIdRequired: "Enter the tax ID.",
+    taxIdInvalid: "Enter a valid CPF or CNPJ.",
     client: "Client",
     editClient: "Edit client",
     name: "Full name or legal company name",

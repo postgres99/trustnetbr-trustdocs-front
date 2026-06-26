@@ -143,6 +143,26 @@ button {
   display: none;
 }
 
+.login-language-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.login-language-row label {
+  color: #66747b;
+  white-space: nowrap;
+}
+
+.login-language-row select {
+  width: auto;
+  min-width: 158px;
+  height: 38px;
+  padding-right: 34px;
+}
+
 .form-heading {
   margin-bottom: 34px;
 }
@@ -227,6 +247,28 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(0, 104, 216, 0.12);
 }
 
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #b83a3a;
+  background: #fffafa;
+}
+
+input[aria-invalid="true"]:focus,
+select[aria-invalid="true"]:focus,
+textarea[aria-invalid="true"]:focus {
+  border-color: #b83a3a;
+  box-shadow: 0 0 0 3px rgba(184, 58, 58, 0.12);
+}
+
+.field-error {
+  display: block;
+  margin-top: 5px;
+  color: #8e2929;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 select {
   cursor: pointer;
 }
@@ -278,6 +320,67 @@ textarea {
   background: transparent;
   font-size: 13px;
   font-weight: 750;
+}
+
+.full-width-text-button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.two-factor-setup-box {
+  display: grid;
+  gap: 7px;
+}
+
+.two-factor-qr-frame {
+  display: grid;
+  width: min(100%, 220px);
+  aspect-ratio: 1;
+  place-items: center;
+  justify-self: center;
+  margin: 8px 0 5px;
+  border: 1px solid #d8e3e8;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.two-factor-qr-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.two-factor-manual-toggle {
+  justify-self: center;
+  margin-top: 2px;
+}
+
+.two-factor-manual-key {
+  display: grid;
+  gap: 6px;
+}
+
+.two-factor-manual-key span {
+  color: #324047;
+  font-weight: 750;
+}
+
+.two-factor-setup-box code {
+  display: block;
+  padding: 10px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--brand-blue);
+  font-size: 14px;
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+
+.two-factor-setup-box small {
+  color: var(--muted);
 }
 
 .form-error {
